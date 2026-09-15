@@ -1,20 +1,19 @@
-#Global endpoints to access without authentication
+# Global endpoints to access without authentication (Spring Security 7 PathPattern, relative to context path)
 mosip:
   global:
     end-points:
-      - /**/assets/**
-      - /**/icons/**
-      - /**/screenshots/**
-      - /favicon**
-      - /**/favicon**
-      - /**/css/**
-      - /**/js/**
-      - /**/error**
-      - /**/webjars/**
-      - /**/csrf
+      - /assets/**
+      - /icons/**
+      - /screenshots/**
+      - /favicon*
+      - /css/**
+      - /js/**
+      - /error*
+      - /webjars/**
+      - /csrf
       - /*/
-      - /**/authenticate/**
-      - /**/actuator/**
+      - /authenticate/**
+      - /actuator/**
       - /sendOtp
       - /validateOtp
       - /invalidateToken
@@ -23,21 +22,16 @@ mosip:
       - /logout
       - /validateOTP
       - /sendOTP
-      - /**/login
-      - /**/login/**
-      - /**/login-redirect/**
-      - /**/logout
-      - /**/h2-console/**
-      - /**/**/license/**
-      - /**/callback/**
-      - /**/authenticate/**
-#Swagger 2.0
-      - /**/authmanager/**
-      - /**/v2/api-docs
-      - /**/swagger-resources/**
-      - /**/configuration/ui
-      - /**/configuration/security
-#Swagger 3.0
-      - /**/v3/api-docs/**
-      - /**/swagger-ui.html
-      - /**/swagger-ui/**
+      - /login/**
+      - /login-redirect/**
+      - /h2-console/**
+      - /license/**
+      - /callback/**
+      - /authmanager/**
+      - /v2/api-docs
+      - /swagger-resources/**
+      - /configuration/ui
+      - /configuration/security
+      - /v3/api-docs/**
+      - /swagger-ui.html
+      - /swagger-ui/**

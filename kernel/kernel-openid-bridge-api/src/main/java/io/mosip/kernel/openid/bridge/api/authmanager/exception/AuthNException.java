@@ -6,6 +6,8 @@ import io.mosip.kernel.core.exception.BaseUncheckedException;
 import io.mosip.kernel.core.exception.ServiceError;
 
 /**
+ * Unchecked authentication (AuthN) failure that carries MOSIP
+ * {@link ServiceError} entries from auth-manager login or token issuance.
  * 
  * @author Srinivasan
  *
@@ -23,6 +25,9 @@ public class AuthNException extends BaseUncheckedException {
 	private final List<ServiceError> list;
 
 	/**
+	 * Creates an AuthN failure from MOSIP service errors (typically parsed from an
+	 * auth-manager error response).
+	 *
 	 * @param list The error list.
 	 */
 	public AuthNException(List<ServiceError> list) {

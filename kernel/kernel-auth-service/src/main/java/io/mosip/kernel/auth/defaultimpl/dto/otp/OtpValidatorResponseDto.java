@@ -3,20 +3,23 @@ package io.mosip.kernel.auth.defaultimpl.dto.otp;
 import lombok.Data;
 
 /**
- * The DTO class for OTP Validation response.
- * 
+ * DTO for OTP validation outcome returned to the auth manager after the OTP
+ * manager accepts or rejects a submitted code.
+ *
  * @author Ramadurai Pandian
  * @since 1.0.0
- * 
+ *
  */
 @Data
 public class OtpValidatorResponseDto {
+
 	/**
-	 * The validation request status.
+	 * Validation request status, typically {@code success} or {@code failure}.
 	 */
 	private String status;
+
 	/**
-	 * The validation request message.
+	 * Validation request message from the OTP manager.
 	 */
 	private String message;
 }

@@ -4,7 +4,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * The Class ResponseDTO.
+ * ID Repository retrieve/update request body: identity JSON plus the registration id.
  *
  * @author Manoj SP
  */
@@ -12,6 +12,8 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 public class RequestDTO extends BaseRequestResponseDTO {
 
-	/** The registration id. */
+	/**
+	 * Registration id (RID) associated with the identity request.
+	 */
 	private String registrationId;
 }

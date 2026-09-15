@@ -10,7 +10,6 @@ import javax.xml.bind.DatatypeConverter;
 
 import org.apache.directory.api.ldap.model.password.PasswordDetails;
 import org.apache.directory.api.ldap.model.password.PasswordUtil;
-import org.assertj.core.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,90 +72,186 @@ import io.mosip.kernel.core.exception.ServiceError;
 import io.mosip.kernel.core.util.CryptoUtil;
 import io.mosip.kernel.core.util.StringUtils;
 
+/**
+ * Keycloak IAM {@link DataStore}: admin REST (roles, users, registration) plus
+ * JDBC to the Keycloak DB for password salts. Uses pooled
+ * {@code keycloakRestTemplate} and {@link UriComponentsBuilder#fromUriString}.
+ */
 @Component
 public class KeycloakImpl implements DataStore {
 
+	/**
+	 * Default individual role name used when registering users.
+	 */
 	private static final String INDIVIDUAL = "INDIVIDUAL";
 
+	/**
+	 * Keycloak realm operations base URL template.
+	 */
 	@Value("${mosip.iam.realm.operations.base-url}")
 	private String keycloakBaseUrl;
 
+	/**
+	 * Keycloak admin API base URL.
+	 */
 	@Value("${mosip.iam.admin-url}")
 	private String keycloakAdminUrl;
 
+	/**
+	 * Admin realm used for privileged operations.
+	 */
 	@Value("${mosip.iam.admin-realm-id}")
 	private String adminRealmId;
 
 	// @Value("${mosip.iam.default.realm-id}")
 	// private String realmId;
 
+	/**
+	 * App-id to realm mapper.
+	 */
 	@Autowired
 	private AuthUtil authUtil;
 
+	/**
+	 * Admin API path suffix for listing roles.
+	 */
 	@Value("${mosip.iam.roles-extn-url}")
 	private String roles;
 
+	/**
+	 * Admin API path suffix for users.
+	 */
 	@Value("${mosip.iam.users-extn-url}")
 	private String users;
 
+	/**
+	 * Admin API path suffix for role-user mapping.
+	 */
 	@Value("${mosip.iam.role-user-mapping-url}")
 	private String roleUserMappingurl;
 
+	/**
+	 * Pooled RestTemplate for Keycloak HTTP.
+	 */
 	@Autowired
 	@Qualifier("keycloakRestTemplate")
 	private RestTemplate restTemplate;
 
+	/**
+	 * JDBC URL/host for the Keycloak database.
+	 */
 	@Value("${db_3_DS.keycloak.ipaddress}")
 	private String keycloakHost;
 
+	/**
+	 * Keycloak DB port (bound from config; JDBC URL uses {@link #keycloakHost}).
+	 */
 	@Value("${db_3_DS.keycloak.port}")
 	private String keycloakPort;
 
+	/**
+	 * Keycloak DB username.
+	 */
 	@Value("${db_3_DS.keycloak.username}")
 	private String keycloakUsername;
 
+	/**
+	 * Keycloak DB password.
+	 */
 	@Value("${db_3_DS.keycloak.password}")
 	private String keycloakPassword;
 
+	/**
+	 * JDBC driver class for the Keycloak DB.
+	 */
 	@Value("${db_3_DS.keycloak.driverClassName}")
 	private String keycloakDriver;
 
+	/**
+	 * Default password assigned to pre-registration users.
+	 */
 	@Value("${mosip.iam.pre-reg_user_password}")
 	private String preRegUserPassword;
 
+	/**
+	 * Admin API path for users-by-role search.
+	 */
 	@Value("${mosip.iam.role-based-user-url}")
 	private String roleBasedUsersurl;
 
+	/**
+	 * Hikari maximum pool size.
+	 */
 	@Value("${hikari.maximumPoolSize:25}")
 	private int maximumPoolSize;
+	/**
+	 * Hikari validation timeout in milliseconds.
+	 */
 	@Value("${hikari.validationTimeout:3000}")
 	private int validationTimeout;
+	/**
+	 * Hikari connection timeout in milliseconds.
+	 */
 	@Value("${hikari.connectionTimeout:60000}")
 	private int connectionTimeout;
+	/**
+	 * Hikari idle timeout in milliseconds.
+	 */
 	@Value("${hikari.idleTimeout:200000}")
 	private int idleTimeout;
+	/**
+	 * Hikari minimum idle connections.
+	 */
 	@Value("${hikari.minimumIdle:0}")
 	private int minimumIdle;
 
+	/**
+	 * Max users returned from Keycloak list APIs ({@code max} query param).
+	 */
 	@Value("${mosip.keycloak.max-no-of-users:100}")
 	private String maxUsers;
 
+	/**
+	 * JDBC template over the Keycloak database (salts/credentials).
+	 */
 	private NamedParameterJdbcTemplate jdbcTemplate;
 
+	/**
+	 * SQL to load {@code userPassword} attributes for usernames.
+	 */
 	private static final String FETCH_ALL_SALTS = "select ue.username,ua.value from public.user_entity ue, public.user_attribute ua where ue.id=ua.user_id and ua.name='userPassword' and ue.username IN(:username)";
 
+	/**
+	 * SQL to load credential secret data for a username.
+	 */
 	private static final String FETCH_PASS_QUERY = "select cr.value from public.credential cr, public.user_entity ue where cr.user_id=ue.id and ue.username=:username";
+	/**
+	 * JSON mapper for Keycloak admin API bodies.
+	 */
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	/**
+	 * Cached Keycloak id of the INDIVIDUAL role (set when mapping roles).
+	 */
 	private String individualRoleID;
+	/**
+	 * Logger for admin API and JDBC errors.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(KeycloakImpl.class);
 
+	/**
+	 * Initializes the Keycloak JDBC pool after properties are injected.
+	 */
 	@PostConstruct
 	private void setup() {
 		setUpConnection();
 	}
 
+	/**
+	 * Builds a Hikari datasource to the Keycloak DB and wraps it as
+	 * {@link NamedParameterJdbcTemplate}.
+	 */
 	private void setUpConnection() {
 		HikariConfig hikariConfig = new HikariConfig();
 		hikariConfig.setDriverClassName(keycloakDriver);
@@ -172,6 +267,12 @@ public class KeycloakImpl implements DataStore {
 		jdbcTemplate = new NamedParameterJdbcTemplate(dataSource);
 	}
 
+	/**
+	 * Lists roles in the given realm via Keycloak admin API.
+	 *
+	 * @param appId Keycloak realm id
+	 * @return roles list
+	 */
 	@Override
 	public RolesListDto getAllRoles(String appId) {
 
@@ -201,6 +302,15 @@ public class KeycloakImpl implements DataStore {
 		return rolesListDto;
 	}
 
+	/**
+	 * Loads user details: empty list, single-user exact search, or slow multi-user
+	 * scan limited by {@link #maxUsers}.
+	 *
+	 * @param userDetails usernames to load
+	 * @param realmId     Keycloak realm
+	 * @return matching users
+	 * @throws Exception if the admin API fails
+	 */
 	@Override
 	public MosipUserListDto getListOfUsersDetails(List<String> userDetails, String realmId) throws Exception {
 		if (userDetails == null || userDetails.isEmpty()) {
@@ -215,6 +325,13 @@ public class KeycloakImpl implements DataStore {
 		return getListOfUsersDetailsSlowPath(userDetails, realmId);
 	}
 
+	/**
+	 * Exact username search ({@code max=1}) including roles and attributes.
+	 *
+	 * @param username user to load
+	 * @param realmId  Keycloak realm
+	 * @return list with at most one user
+	 */
 	private MosipUserListDto getSingleUserDetails(String username, String realmId) {
 		Map<String, String> path = Map.of(AuthConstant.REALM_ID, realmId);
 		var uri = UriComponentsBuilder.fromUriString(keycloakAdminUrl + users)
@@ -264,6 +381,14 @@ public class KeycloakImpl implements DataStore {
 		return out;
 	}
 
+	/**
+	 * Lists up to {@link #maxUsers} users and filters to {@code userDetails}.
+	 *
+	 * @param userDetails usernames wanted
+	 * @param realmId     Keycloak realm
+	 * @return matching users
+	 * @throws Exception if the admin API fails
+	 */
 	private MosipUserListDto getListOfUsersDetailsSlowPath(List<String> userDetails, String realmId) throws Exception {
 		Set<String> wanted = new HashSet<>(userDetails.size());
 		for (String u : userDetails) if (u != null) wanted.add(u.toLowerCase(Locale.ROOT));
@@ -335,12 +460,28 @@ public class KeycloakImpl implements DataStore {
 		return mosipUserListDto;
 	}*/
 
+	/**
+	 * Loads password salts from the Keycloak DB for the given usernames.
+	 *
+	 * @param userDetails usernames
+	 * @param appId       unused realm argument on this JDBC path
+	 * @return salts per user
+	 * @throws Exception if JDBC fails
+	 */
 	@Override
 	public MosipUserSaltListDto getAllUserDetailsWithSalt(List<String> userDetails, String appId) throws Exception {
 
 		return jdbcTemplate.query(FETCH_ALL_SALTS, new MapSqlParameterSource(AuthConstant.USER_NAME, userDetails),
 				new ResultSetExtractor<MosipUserSaltListDto>() {
 
+	/**
+	 * Maps JDBC rows to {@link MosipUserSalt} (username + decoded salt).
+	 *
+	 * @param rs result set of username and userPassword attribute
+	 * @return salt list DTO
+	 * @throws SQLException        if a column cannot be read
+	 * @throws DataAccessException if Spring JDBC fails
+	 */
 					@Override
 					public MosipUserSaltListDto extractData(ResultSet rs) throws SQLException, DataAccessException {
 						MosipUserSaltListDto mosipUserSaltListDto = new MosipUserSaltListDto();
@@ -360,6 +501,14 @@ public class KeycloakImpl implements DataStore {
 				});
 	}
 
+	/**
+	 * Reads RID user attribute from Keycloak admin user search.
+	 *
+	 * @param userId username
+	 * @param appId  realm id
+	 * @return RID wrapper
+	 * @throws Exception if the user or RID attribute is missing
+	 */
 	@Override
 	public RIdDto getRidFromUserId(String userId, String appId) throws Exception {
 		RIdDto rIdDto = new RIdDto();
@@ -399,12 +548,25 @@ public class KeycloakImpl implements DataStore {
 
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param userId unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public AuthZResponseDto unBlockAccount(String userId) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Creates the user in Keycloak if missing and maps INDIVIDUAL role when present.
+	 *
+	 * @param userId registration request including app id
+	 * @return DTO with username only
+	 */
 	@Override
 	public MosipUserDto registerUser(UserRegistrationRequestDto userId) {
 		Map<String, String> pathParams = new HashMap<>();
@@ -432,13 +594,19 @@ public class KeycloakImpl implements DataStore {
 
 	}
 
+	/**
+	 * POSTs realm role mapping for INDIVIDUAL onto the user.
+	 *
+	 * @param userID  Keycloak internal user id
+	 * @param realmId realm
+	 */
 	private void roleMapper(String userID, String realmId) {
 		Map<String, String> pathParams = new HashMap<>();
 
 		pathParams.put(AuthConstant.REALM_ID, realmId);
 		pathParams.put("userID", userID);
 		try {
-			if (Strings.isNullOrEmpty(individualRoleID))
+			if (individualRoleID == null || individualRoleID.isEmpty())
 				individualRoleID = getRoleId(INDIVIDUAL, realmId);
 		} catch (Exception ex) {
 			LOGGER.error("Role " + INDIVIDUAL + " not found in " + realmId + " for user " + userID);
@@ -454,6 +622,13 @@ public class KeycloakImpl implements DataStore {
 		callKeycloakService(uriComponentsBuilder.buildAndExpand(pathParams).toString(), HttpMethod.POST, httpEntity);
 	}
 
+	/**
+	 * Resolves Keycloak internal id from username.
+	 *
+	 * @param userName username
+	 * @param realmId  realm
+	 * @return user id, or {@code null} if missing
+	 */
 	private String getIDfromUserID(String userName, String realmId) {
 		Map<String, String> pathParams = new HashMap<>();
 		pathParams.put(AuthConstant.REALM_ID, realmId);
@@ -486,8 +661,8 @@ public class KeycloakImpl implements DataStore {
 	 * Checks if is user already present.
 	 *
 	 * @param userName the user name
+	 * @param realmId  Keycloak realm
 	 * @return true, if successful
-	 * @throws IOException Signals that an I/O exception has occurred.
 	 */
 	public boolean isUserAlreadyPresent(String userName, String realmId) {
 		Map<String, String> pathParams = new HashMap<>();
@@ -517,6 +692,13 @@ public class KeycloakImpl implements DataStore {
 		return false;
 	}
 
+	/**
+	 * Maps a MOSIP registration request to a Keycloak create-user body (roles,
+	 * credentials, mobile/gender attributes).
+	 *
+	 * @param userRegDto registration request
+	 * @return Keycloak payload
+	 */
 	private KeycloakRequestDto mapUserRequestToKeycloakRequestDto(UserRegistrationRequestDto userRegDto) {
 		KeycloakRequestDto keycloakRequestDto = new KeycloakRequestDto();
 		List<String> roles = new ArrayList<>();
@@ -553,77 +735,163 @@ public class KeycloakImpl implements DataStore {
 		return keycloakRequestDto;
 	}
 
+	/**
+	 * Unused stub retained for historical mapping.
+	 *
+	 * @param userId unused registration request
+	 */
 	private void KeycloakRequestDtomapUserRequestToKeycloakRequestDto(UserRegistrationRequestDto userId) {
 		// TODO Auto-generated method stub
 
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param userPasswordRequestDto unused
+	 * @return {@code null}
+	 */
 	@Override
 	public UserPasswordResponseDto addPassword(UserPasswordRequestDto userPasswordRequestDto) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param passwordDto unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public AuthZResponseDto changePassword(PasswordDto passwordDto) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param passwordDto unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public AuthZResponseDto resetPassword(PasswordDto passwordDto) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param mobileNumber unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public UserNameDto getUserNameBasedOnMobileNumber(String mobileNumber) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented (authentication is in {@code AuthServiceImpl}).
+	 *
+	 * @param loginUser unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public MosipUserDto authenticateUser(LoginUser loginUser) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param otpUser unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public MosipUserDto authenticateWithOtp(OtpUser otpUser) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param loginUser unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public MosipUserDto authenticateUserWithOtp(UserOtp loginUser) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param clientSecret unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public MosipUserDto authenticateWithSecretKey(ClientSecret clientSecret) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param username unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public MosipUserDto getUserRoleByUserId(String username) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param mobileNumber unused
+	 * @return {@code null}
+	 * @throws Exception never thrown
+	 */
 	@Override
 	public MosipUserDto getUserDetailBasedonMobileNumber(String mobileNumber) throws Exception {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param userId unused
+	 * @return {@code null}
+	 */
 	@Override
 	public ValidationResponseDto validateUserName(String userId) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
+	/**
+	 * Not implemented.
+	 *
+	 * @param userIds unused
+	 * @return {@code null}
+	 */
 	@Override
 	public UserDetailsResponseDto getUserDetailBasedOnUid(List<String> userIds) {
 		// TODO Auto-generated method stub
@@ -647,14 +915,14 @@ public class KeycloakImpl implements DataStore {
 		} catch (HttpServerErrorException | HttpClientErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
 					throw new BadCredentialsException("Authentication failed from AuthManager");
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -778,6 +1046,13 @@ public class KeycloakImpl implements DataStore {
 
 	}
 
+	/**
+	 * Reads individualId (or individualid) attribute from Keycloak user search.
+	 *
+	 * @param userId  username
+	 * @param realmID realm
+	 * @return individual id wrapper
+	 */
 	@Override
 	public IndividualIdDto getIndividualIdFromUserId(String userId, String realmID) {
 		IndividualIdDto individualIdDto = new IndividualIdDto();
@@ -824,6 +1099,20 @@ public class KeycloakImpl implements DataStore {
 		return individualIdDto;
 	}
 
+	/**
+	 * Searches users by role or by email/name/username/search with pagination.
+	 *
+	 * @param realmId   Keycloak realm
+	 * @param roleName  optional role; when set, uses role-based user URL
+	 * @param pageStart {@code first} offset
+	 * @param pageFetch page size; {@code 0} uses {@link #maxUsers}
+	 * @param email     optional email filter
+	 * @param firstName optional first name
+	 * @param lastName  optional last name
+	 * @param username  optional username
+	 * @param search    optional free-text search
+	 * @return matching users
+	 */
 	@Override
 	public MosipUserListDto getListOfUsersDetails(String realmId, String roleName, int pageStart, int pageFetch,
 			String email, String firstName, String lastName, String username, String search) {
@@ -873,6 +1162,16 @@ public class KeycloakImpl implements DataStore {
 		return mosipUserListDto;
 	}
 
+	/**
+	 * Maps Keycloak user JSON to MOSIP users; loads roles unless this is a
+	 * role-based search (then {@code roleName} is used).
+	 *
+	 * @param node              admin API JSON array
+	 * @param realmId           realm for role lookup
+	 * @param isRoleBasedSearch {@code true} to skip per-user role fetch
+	 * @param roleName          role to set when role-based
+	 * @return mapped users
+	 */
 	private List<MosipUserDto> mapUsersToUserDetailDto(JsonNode node, String realmId, boolean isRoleBasedSearch,
 			String roleName) {
 		List<MosipUserDto> mosipUserDtos = new ArrayList<>();

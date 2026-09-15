@@ -40,14 +40,29 @@ import io.mosip.kernel.core.util.DateUtils2;
 @Component
 public class TokenValidator {
 
+	/**
+	 * Logger for expiry and admin-claim diagnostics.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(TokenValidator.class);
 
+	/**
+	 * JWT secret and token-base prefix for locally minted tokens.
+	 */
 	@Autowired
 	MosipEnvironment mosipEnvironment;
 
+	/**
+	 * Token datastore (injected; used by callers of this validator's ecosystem).
+	 */
 	@Autowired
 	TokenService customTokenServices;
 
+	/**
+	 * OTP tokens must have {@code isOtpVerified} when {@code isOtpRequired} is true.
+	 *
+	 * @param claims JWT claims
+	 * @return {@code true} if OTP constraints are satisfied or not applicable
+	 */
 	private Boolean validateOtpDetails(Claims claims) {
 		if (claims.get("isOtpRequired") == null) {
 			return true;
@@ -61,13 +76,26 @@ public class TokenValidator {
 		return true;
 	}
 
+	/**
+	 * Builds a {@link MosipUser} from subject, mobile, mail, and role claims.
+	 *
+	 * @param claims JWT claims
+	 * @return user projection
+	 */
 	private MosipUser buildMosipUser(Claims claims) {
 		return new MosipUser(claims.getSubject(), (String) claims.get("mobile"), (String) claims.get("mail"),
 				(String) claims.get("role"));
 	}
 
+	/**
+	 * Decodes a Keycloak access token (no signature check) into a {@link MosipUserDto}
+	 * using {@code realm_access.roles} and standard claims.
+	 *
+	 * @param token compact JWT
+	 * @return user DTO including semicolon-separated roles
+	 */
 	public MosipUserDto getAdminClaims(String token) {
-		DecodedJWT decodedJWT = JWT.decode(token);
+		DecodedJWT decodedJWT = decodeJwt(token);
 		Claim realmAccess = decodedJWT.getClaim("realm_access");
 		RealmAccessDto access = realmAccess.as(RealmAccessDto.class);
 		String[] roles = access.getRoles();
@@ -96,23 +124,57 @@ public class TokenValidator {
 	 * @return true if token if expired else false
 	 */
 	public boolean isExpired(String token) {
-		DecodedJWT decodedJWT = JWT.decode(token);
+		DecodedJWT decodedJWT = decodeJwt(token);
 		long expiryEpochTime = decodedJWT.getClaim("exp").asLong();
 		long currentEpoch = DateUtils2.getUTCCurrentDateTime().toEpochSecond(ZoneOffset.UTC);
 		LOGGER.debug("invoked isExpired token " + expiryEpochTime + " currentEpoch " + currentEpoch);
 		return currentEpoch > expiryEpochTime;
 	}
 
+	/**
+	 * Keycloak realm name parsed from the JWT {@code iss} claim path.
+	 *
+	 * @param token compact JWT
+	 * @return last path segment of the issuer URL
+	 */
 	public String getKeycloakRealm(String token) {
 		String issuer = getissuer(token);
 		return issuer.substring(issuer.lastIndexOf("/") + 1);
 	}
 
+	/**
+	 * Issuer URL from the JWT {@code iss} claim.
+	 *
+	 * @param token compact JWT
+	 * @return issuer string
+	 */
 	public String getissuer(String token) {
-		DecodedJWT decodedJWT = JWT.decode(token);
+		DecodedJWT decodedJWT = decodeJwt(token);
 		return decodedJWT.getClaim("iss").asString();
 	}
 
+	/**
+	 * Decodes a compact JWT ({@code header.payload.signature}). A one-part or
+	 * two-part string is not a JWT; Auth0 raises
+	 * {@link com.auth0.jwt.exceptions.JWTDecodeException}, which
+	 * {@link io.mosip.kernel.auth.defaultimpl.exception.AuthManagerExceptionHandler}
+	 * maps to HTTP 401.
+	 *
+	 * @param token compact JWT
+	 * @return decoded token
+	 */
+	private DecodedJWT decodeJwt(String token) {
+		return JWT.decode(token);
+	}
+
+	/**
+	 * Parses a locally minted token (token-base prefix + HS512 signature).
+	 *
+	 * @param token compact token including token-base prefix
+	 * @return JWT claims
+	 * @throws Exception {@link NonceExpiredException} or {@link AuthManagerException}
+	 *                   on invalid prefix, signature, or expiry
+	 */
 	private Claims getClaims(String token) throws Exception {
 		String token_base = mosipEnvironment.getTokenBase();
 		String secret = mosipEnvironment.getJwtSecret();
@@ -139,6 +201,13 @@ public class TokenValidator {
 		return claims;
 	}
 
+	/**
+	 * Validates a token that must have {@code isOtpRequired} set (OTP pending/complete).
+	 *
+	 * @param token compact local token
+	 * @return user and token wrapper
+	 * @throws Exception if claims cannot be parsed or OTP is not required
+	 */
 	public MosipUserToken validateForOtpVerification(String token) throws Exception {
 		Claims claims = getClaims(token);
 		Boolean isOtpRequired = (Boolean) claims.get("isOtpRequired");
@@ -152,6 +221,13 @@ public class TokenValidator {
 		}
 	}
 
+	/**
+	 * Validates a local token including OTP-required/verified flags.
+	 *
+	 * @param token compact local token
+	 * @return user and token wrapper
+	 * @throws Exception if parse or OTP flags fail
+	 */
 	public MosipUserToken basicValidate(String token) throws Exception {
 		Claims claims = getClaims(token);
 		Boolean isOtpValid = validateOtpDetails(claims);
@@ -164,12 +240,25 @@ public class TokenValidator {
 		}
 	}
 
+	/**
+	 * Parses a local token into {@link MosipUserTokenDto} without OTP-flag checks.
+	 *
+	 * @param token compact local token
+	 * @return user DTO plus original token
+	 * @throws Exception if parse fails
+	 */
 	public MosipUserTokenDto validateToken(String token) throws Exception {
 		Claims claims = getClaims(token);
 		MosipUserDto mosipUserDto = buildDto(claims);
 		return new MosipUserTokenDto(mosipUserDto, token, null, 0, null, null, 0);
 	}
 
+	/**
+	 * Maps local-token claims onto {@link MosipUserDto}.
+	 *
+	 * @param claims JWT claims
+	 * @return user DTO
+	 */
 	private MosipUserDto buildDto(Claims claims) {
 		MosipUserDto mosipUserDto = new MosipUserDto();
 		mosipUserDto.setUserId(claims.getSubject());
@@ -181,6 +270,13 @@ public class TokenValidator {
 		return mosipUserDto;
 	}
 
+	/**
+	 * Validates a token that represents an OTP session ({@code isOtpRequired}).
+	 *
+	 * @param otp compact local token carrying OTP flags
+	 * @return user DTO plus token
+	 * @throws Exception if parse fails or OTP is not required
+	 */
 	public MosipUserTokenDto validateOTP(String otp) throws Exception {
 		Claims claims = getClaims(otp);
 		Boolean isOtpRequired = (Boolean) claims.get("isOtpRequired");
@@ -193,6 +289,13 @@ public class TokenValidator {
 		}
 	}
 
+	/**
+	 * Whether the local token's {@code exp} claim is still in the future.
+	 *
+	 * @param token compact local token
+	 * @return {@code true} if not expired
+	 * @throws Exception if parse fails
+	 */
 	public boolean validateExpiry(String token) throws Exception {
 		Claims claims = getClaims(token);
 		if (claims != null) {

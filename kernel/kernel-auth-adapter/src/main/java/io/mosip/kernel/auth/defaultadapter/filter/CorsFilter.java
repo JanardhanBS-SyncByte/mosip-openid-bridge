@@ -13,29 +13,50 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-/***********************************************************************************************************************
- * AUTH HEADERS FILTER This filter is going to act as a CORS filter. It is
- * assigned before AuthFilter in the filter chain.
- *
- * Tasks: 1. Sets headers to allow cross origin requests. 2. Sets header to
- * allow and expose "Authorization" header.
+/**
+ * CORS filter registered before {@link AuthFilter} when
+ * {@code mosip.security.cors-enable} is true.
+ * <p>
+ * Allowed origins come from {@code mosip.security.origins}. OPTIONS preflight
+ * is answered with CORS headers and is not passed down the chain.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
  *
  * @author Sabbu Uday Kumar
  * @since 1.0.0
- **********************************************************************************************************************/
-
+ */
 public class CorsFilter extends OncePerRequestFilter {
 	
+	/**
+	 * Logger for missing Origin diagnostics.
+	 */
 	private static final Logger LOGGER= LoggerFactory.getLogger(CorsFilter.class);
 	
 	
+	/**
+	 * Allowed Origin header values (comma-split from configuration).
+	 */
 	private List<String> origins;
 	
+	/**
+	 * Splits {@code origins} on commas into {@link #origins}.
+	 *
+	 * @param origins comma-separated allowed origins, e.g. {@code localhost:8080}
+	 */
 	public CorsFilter(String origins) {
 		this.origins=Arrays.asList(origins.split(","));
 		this.origins.parallelStream().forEach(x -> x.trim());
 	}
 
+	/**
+	 * Sets CORS response headers and continues the chain except for OPTIONS.
+	 *
+	 * @param request     the inbound request
+	 * @param response    the outbound response
+	 * @param filterChain the remaining filter chain
+	 * @throws ServletException if the chain throws
+	 * @throws IOException      if the chain throws
+	 */
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {

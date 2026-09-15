@@ -35,8 +35,7 @@ import org.springframework.security.web.authentication.AbstractAuthenticationPro
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
-import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 
 import io.mosip.kernel.auth.defaultadapter.config.NoAuthenticationEndPoint.GlobalEndPoint;
 import io.mosip.kernel.auth.defaultadapter.config.NoAuthenticationEndPoint.ServiceEndPoint;
@@ -49,64 +48,90 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Holds the main configuration for authentication and authorization using
- * spring security.
- *
- * Inclusions: 1. AuthenticationManager bean configuration: a. This is assigned
- * an authProvider that we implemented. This option can include multiple auth
- * providers if necessary based on the requirement. b. RETURNS an instance of
- * the ProviderManager. 2. AuthFilter bean configuration: a. This extends
- * AbstractAuthenticationProcessingFilter. b. Instance of the AuthFilter is
- * created. c. This filter comes in line after the AuthHeadersFilter. d. Binds
- * the AuthenticationManager instance created with the filter. e. Binds the
- * AuthSuccessHandler created with the filter. f. RETURNS an instance of the
- * AuthFilter. 3. RestTemplate bean configuration: a. Binds the
- * ClientInterceptor instance with the RestTemplate instance created. b. RETURNS
- * an instance of the RestTemplate. 4. Secures endpoints using antMatchers and
- * adds filters in a sequence for execution.
+ * Spring Security 7 configuration applied when this adapter is on a MOSIP
+ * service classpath.
+ * <p>
+ * Builds a {@link ProviderManager} from optional extra
+ * {@link AbstractUserDetailsAuthenticationProvider} beans plus
+ * {@link AuthHandler}. {@link AuthFilter} matches {@link AnyRequestMatcher}
+ * and then skips paths listed in {@link NoAuthenticationEndPoint} after
+ * {@link PathPatternSupport} conversion (PathPattern, not Ant). CSRF and CORS
+ * are optional via {@code mosip.security.csrf-enable} and
+ * {@code mosip.security.cors-enable}.
  *
  * @author Sabbu Uday Kumar
  * @author Ramadurai Saravana Pandian
  * @author Raj Jha
  * @author Urvil Joshi
- * 
+ *
  * @since 1.0.0
- **/
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 @Order(2)
 public class SecurityConfig {
 
+	/**
+	 * Logger for custom auth-provider registration.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(SecurityConfig.class);
 
+	/**
+	 * CSRF ignore patterns when CSRF is enabled.
+	 */
 	@Value("${mosip.kernel.csrf_ignore.url:}")
 	private String[] csrfIgnoreUrls;
 
+	/**
+	 * When {@code false}, CSRF protection is disabled on the filter chain.
+	 */
 	@Value("${mosip.security.csrf-enable:false}")
 	private boolean isCSRFEnable;
 
+	/**
+	 * When {@code true}, {@link CorsFilter} is inserted before {@link AuthFilter}.
+	 */
 	@Value("${mosip.security.cors-enable:false}")
 	private boolean isCORSEnable;
 
+	/**
+	 * Comma-separated origins passed to {@link CorsFilter}.
+	 */
 	@Value("${mosip.security.origins:localhost:8080}")
 	private String origins;
 
+	/**
+	 * Used to resolve extra authentication-provider beans by name.
+	 */
 	@Autowired
 	private ApplicationContext applicationContext;
 
+	/**
+	 * Default JWT authentication provider.
+	 */
 	@Autowired
 	private AuthHandler authProvider;
 
+	/**
+	 * Environment for per-application provider bean names and application name.
+	 */
 	@Autowired
 	private Environment environment;
 	
 	/**
-	 * It's inject the end-points.
+	 * Bound no-auth global and service path lists.
 	 */
 	@Autowired
 	private NoAuthenticationEndPoint noAuthenticationEndPoint;
 
+	/**
+	 * Builds a {@link ProviderManager} from optional extra providers named in
+	 * {@code mosip.security.authentication.provider.beans.list.<app>} plus
+	 * {@link #authProvider}.
+	 *
+	 * @return the authentication manager used by {@link AuthFilter}
+	 */
 	// @ConditionalOnMissingBean(AuthenticationManager.class)
 	@Bean
 	@SuppressWarnings("unchecked")
@@ -130,16 +155,28 @@ public class SecurityConfig {
 		return new ProviderManager(authProviders);
 	}
 
+	/**
+	 * Creates {@link AuthFilter} for {@link AnyRequestMatcher#INSTANCE}, bound to
+	 * {@link #authenticationManager()} and {@link AuthSuccessHandler}.
+	 *
+	 * @return the authentication processing filter
+	 */
 	// @ConditionalOnMissingBean(AbstractAuthenticationProcessingFilter.class)
 	@Bean
 	public AbstractAuthenticationProcessingFilter authFilter() {
-		RequestMatcher requestMatcher = new AntPathRequestMatcher("*");
-		AuthFilter filter = new AuthFilter(requestMatcher, noAuthenticationEndPoint, environment);
+		AuthFilter filter = new AuthFilter(AnyRequestMatcher.INSTANCE, noAuthenticationEndPoint, environment);
 		filter.setAuthenticationManager(authenticationManager());
 		filter.setAuthenticationSuccessHandler(new AuthSuccessHandler());
 		return filter;
 	}
 
+	/**
+	 * Disables servlet-container registration of {@link AuthFilter} so it runs
+	 * only inside the Spring Security chain.
+	 *
+	 * @param filter the auth filter bean
+	 * @return a disabled {@link FilterRegistrationBean}
+	 */
 	@Bean
 	public FilterRegistrationBean<AbstractAuthenticationProcessingFilter> registration(
 			AbstractAuthenticationProcessingFilter filter) {
@@ -149,6 +186,16 @@ public class SecurityConfig {
 		return registration;
 	}
 
+	/**
+	 * Stateless Security 7 filter chain: optional CSRF, PathPattern permit-all
+	 * for no-auth endpoints, authenticated for everything else,
+	 * {@link AuthEntryPoint} on failure, and {@link AuthFilter} before
+	 * {@link UsernamePasswordAuthenticationFilter}.
+	 *
+	 * @param http the HTTP security builder
+	 * @return the built filter chain
+	 * @throws Exception if the chain cannot be built
+	 */
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		if (!isCSRFEnable) {
@@ -160,10 +207,12 @@ public class SecurityConfig {
 		
 		String[] exclusionPatterns = Stream.concat(
 				Optional.ofNullable(noAuthenticationEndPoint.getGlobal()).map(GlobalEndPoint::getEndPoints)
-						.map(List::stream).orElseGet(() -> Stream.of()),
+						.map(List::stream).orElseGet(Stream::empty),
 				Optional.ofNullable(noAuthenticationEndPoint.getService()).map(ServiceEndPoint::getEndPoints)
-						.map(List::stream).orElseGet(() -> Stream.of()))
-				.toArray(size -> new String[size]);
+						.map(List::stream).orElseGet(Stream::empty))
+				.map(PathPatternSupport::toPathPattern)
+				.distinct()
+				.toArray(String[]::new);
 		
 		http.authorizeHttpRequests(authorizeRequests -> authorizeRequests
 				.requestMatchers(exclusionPatterns).permitAll()
@@ -184,6 +233,12 @@ public class SecurityConfig {
 		return http.build();
 	}
 
+	/**
+	 * Returns the first comma-separated {@code spring.application.name} value.
+	 *
+	 * @return the hosting application name
+	 * @throws RuntimeException if the property is missing or blank
+	 */
 	@SuppressWarnings("java:S2259") // added suppress for sonarcloud. Null check is performed at line # 211
 	private String getApplicationName() {
 		String appNames = environment.getProperty("spring.application.name");
@@ -195,6 +250,11 @@ public class SecurityConfig {
 		}
 	}
 
+	/**
+	 * Cookie CSRF repository with {@code HttpOnly} false and cookie path {@code /}.
+	 *
+	 * @return the CSRF token repository
+	 */
 	private CsrfTokenRepository getCsrfTokenRepository() {
 		CookieCsrfTokenRepository cookieCsrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
 		cookieCsrfTokenRepository.setCookiePath("/");
@@ -202,8 +262,21 @@ public class SecurityConfig {
 	} 
 }
 
+/**
+ * Authentication entry point that returns HTTP 401 {@code UNAUTHORIZED} without
+ * a login redirect (stateless JWT services).
+ */
 class AuthEntryPoint implements AuthenticationEntryPoint {
 
+	/**
+	 * Sends HTTP 401 with reason {@code UNAUTHORIZED}.
+	 *
+	 * @param request       the failed request
+	 * @param response      the response
+	 * @param authException the authentication failure
+	 * @throws IOException      if the error cannot be written
+	 * @throws ServletException never thrown by this implementation
+	 */
 	@Override
 	public void commence(jakarta.servlet.http.HttpServletRequest request,
 			jakarta.servlet.http.HttpServletResponse response, AuthenticationException authException)

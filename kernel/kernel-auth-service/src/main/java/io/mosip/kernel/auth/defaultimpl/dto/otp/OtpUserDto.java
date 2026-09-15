@@ -9,6 +9,9 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
+ * MOSIP envelope wrapping an {@link OtpUser} body used to request OTP generation
+ * and channel delivery (SMS, email, or both).
+ *
  * @author Ramadurai Pandian
  *
  */
@@ -16,6 +19,9 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 public class OtpUserDto extends BaseRequestResponseDto {
 
+	/**
+	 * User, channels, and application context for OTP generation.
+	 */
 	private OtpUser request;
 
 }

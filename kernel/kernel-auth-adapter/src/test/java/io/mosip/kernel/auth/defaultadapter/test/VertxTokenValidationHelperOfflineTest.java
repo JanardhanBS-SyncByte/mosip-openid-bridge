@@ -22,7 +22,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.client.RestTemplate;
@@ -41,58 +41,84 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.ext.web.RoutingContext;
 
+/**
+ * Tests offline Vert.x token validation in {@link VertxTokenValidationHelper}
+ * when {@link ValidateTokenHelper} is replaced with a Boot 4 {@link MockitoBean}.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 public class VertxTokenValidationHelperOfflineTest {
 
+	  /** Admin token-validate URL from test properties. */
 	  @Value("${auth.server.admin.validate.url:}")
 		private String adminValidateUrl;
 
+	    /** Whether Vert.x validation uses the offline path. */
 	    @Value("${auth.server.admin.offline.vertx.token.validate:true}")
 		private boolean offlineTokenValidate;
 
+	    /** Active Spring profile from test properties. */
 	    @Value("${spring.profiles.active:}")
 		String activeProfile;
 	    
+	    /** OIDC JWKS path from test properties. */
 	    @Value("${auth.server.admin.oidc.certs.path:/protocol/openid-connect/certs}")
 	    private String certsPath;
 
+	    /** OIDC userinfo path from test properties. */
 	    @Value("${auth.server.admin.oidc.userinfo.path:/protocol/openid-connect/userinfo}")
 	    private String userInfo;
 
+	    /** Whether issuer domain is validated. */
 	    @Value("${auth.server.admin.issuer.domain.validate:true}")
 	    private boolean validateIssuerDomain;
 
+	    /** Public IAM issuer URI. */
 	    @Value("${auth.server.admin.issuer.uri:}")
 	    private String issuerURI;
 
+		/** Internal IAM issuer URI. */
 		@Value("${auth.server.admin.issuer.internal.uri:}")
 	    private String issuerInternalURI;
 
+	    /** Whether audience claim validation is enabled. */
 	    @Value("${auth.server.admin.audience.claim.validate:true}")
 	    private boolean validateAudClaim;
 
+	    /** Allowed audience list (not injected; unused in this test). */
 	    //@Value("${auth.server.admin.allowed.audience:}")
 	    private List<String> allowedAudience;
 
+	    /** JSON mapper from the test context. */
 	    @Autowired
 		private ObjectMapper objectMapper;
 
+	    /** Spring environment from the test context. */
 	    @Autowired
 		private Environment environment;
 	    
-	    @MockBean
+	    /** Offline JWT validation collaborator replaced with a Mockito bean. */
+	    @MockitoBean
 	    private ValidateTokenHelper validateTokenHelper;
 
 	
+	/** Vert.x token validation helper under test. */
 	@Autowired
 	private VertxTokenValidationHelper vertxTokenValidationHelper;
 	
 	
+	/** Mock RestTemplate passed into Vert.x validation. */
 	private RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+    /** Mock Vert.x routing context for the request under test. */
     private RoutingContext routingContext;
+    /** Mock Vert.x HTTP request used to supply the Authorization cookie. */
     private HttpServerRequest httpServerRequest;
+    /** Mock Vert.x HTTP response (unused in the active test). */
     private HttpServerResponse httpServerResponse;
+
+	/**
+	 * Creates Vert.x request/response mocks for each test.
+	 */
 	@Before
     public void init() {
 		routingContext = Mockito.mock(RoutingContext.class);
@@ -101,6 +127,12 @@ public class VertxTokenValidationHelperOfflineTest {
 	}
 	
 	
+	/**
+	 * Asserts offline validation returns the user built from a signed RSA JWT
+	 * when {@link ValidateTokenHelper} reports the token valid.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void getTokenValidatedVertxUserResponseTest() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");

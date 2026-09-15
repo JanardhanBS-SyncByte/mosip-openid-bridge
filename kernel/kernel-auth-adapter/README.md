@@ -2,29 +2,66 @@
 
 ## Overview
 
-The **Auth Adapter** is a library that can be injected into MOSIP's applications to secure exposed REST APIs. It acts as an adapter to facilitate authentication processes.
+**Kernel Auth Adapter** is the Spring Security adapter injected into MOSIP HTTP services. It validates inbound tokens (online or offline JWKS) and forwards service or requester tokens on outbound calls.
 
-## Local Setup
+It is a **Maven dependency**, not a Docker wget extra. `kernel-core` is `provided` (the host service already has it). Vert.x **3.9.16** stays `provided`. The published artifact is the fat-jar (`appendAssemblyId=false`). Commons hosts unpack `io/mosip/kernel/auth/**`.
 
-### Usage
+Parent: [`../README.md`](../README.md)
 
-Add the Auth Adapter module to your project as a Maven dependency:
+Do not merge this module into `kernel-auth-service`. Spring Security 7 matchers: `AnyRequestMatcher` + `PathPatternRequestMatcher` (`PathPatternSupport`; no `AntPathRequestMatcher`).
+
+---
+
+# Local Setup
+
+## Prerequisites
+- **JDK:** 21
+- **Maven:** 3.9+
+- commons **`kernel-core` 1.4.1-SNAPSHOT** installed first
+
+## Usage
+
+Add the adapter to the host service:
 
 ```xml
 <dependency>
     <groupId>io.mosip.kernel</groupId>
     <artifactId>kernel-auth-adapter</artifactId>
-    <version>${project.version}</version>
+    <version>1.4.1-SNAPSHOT</version>
 </dependency>
+```
+
+Reactor siblings omit `<version>` (parent `dependencyManagement` = `${project.version}`).
+
+## Installation
+
+From `kernel/`:
+
+```text
+mvn -pl kernel-auth-adapter -am clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 ```
 
 ## Configuration
 
-Ensure the following configurations are present in your application properties if required by the adapter (refer to `kernel-auth-service` for related configurations as this adapter often interfaces with it).
+Host services take IAM and validate-token URLs from [mosip-config](https://github.com/mosip/mosip-config):
+- [application-default.properties](https://github.com/mosip/mosip-config/blob/master/application-default.properties)
+- [kernel-default.properties](https://github.com/mosip/mosip-config/blob/master/kernel-default.properties)
+
+Typical keys: `auth.server.admin.validate.url`, `auth.server.admin.issuer.uri`, `auth.allowed.urls`, `mosip.auth.adapter.impl.basepackage`.
+
+---
 
 ## Documentation
 
-For integration details, refer to the [MOSIP Kernel Authentication Manager Service Documentation](https://mosip.github.io/documentation/1.2.0/kernel-authentication-manager-service.html).
+### API Documentation
+
+[MOSIP Kernel Authentication Manager Service](https://mosip.github.io/documentation/1.2.0/kernel-authentication-manager-service.html)
+
+### Product Documentation
+
+[OpenID Bridge developer guide](https://docs.mosip.io/1.2.0/modules/commons/openid-bridge-developer-guide)
+
+---
 
 ## Contribution & Community
 
@@ -34,6 +71,8 @@ For integration details, refer to the [MOSIP Kernel Authentication Manager Servi
 
 • For any GitHub issues: [Report here](https://github.com/mosip/mosip-openid-bridge/issues)
 
+---
+
 ## License
 
-This project is licensed under the [Mozilla Public License 2.0](LICENSE).
+This project is licensed under the [Mozilla Public License 2.0](../../LICENSE).

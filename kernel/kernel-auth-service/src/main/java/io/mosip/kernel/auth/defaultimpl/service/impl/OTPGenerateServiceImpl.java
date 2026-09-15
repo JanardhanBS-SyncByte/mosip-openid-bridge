@@ -38,6 +38,10 @@ import io.mosip.kernel.core.http.RequestWrapper;
 import io.mosip.kernel.core.http.ResponseWrapper;
 
 /**
+ * Calls the kernel OTP manager to generate OTPs for authmanager send-OTP
+ * flows. Uses {@link MediaType} JSON wrappers and {@code getStatusCode().value()}
+ * for 401/403.
+ *
  * @author Ramadurai Pandian
  *
  */
@@ -45,13 +49,22 @@ import io.mosip.kernel.core.http.ResponseWrapper;
 @Component
 public class OTPGenerateServiceImpl implements OTPGenerateService {
 
+	/**
+	 * RestTemplate for OTP manager HTTP.
+	 */
 	@Qualifier("authRestTemplate")
 	@Autowired
 	RestTemplate restTemplate;
 
+	/**
+	 * OTP generate API URL.
+	 */
 	@Autowired
 	MosipEnvironment mosipEnvironment;
 
+	/**
+	 * Mapper for MOSIP {@code ResponseWrapper} bodies.
+	 */
 	@Autowired
 	private ObjectMapper mapper;
 
@@ -60,6 +73,14 @@ public class OTPGenerateServiceImpl implements OTPGenerateService {
 	 * 
 	 * @see io.mosip.kernel.auth.service.OTPGenerateService#generateOTP(io.mosip.
 	 * kernel. auth.entities.MosipUserDto, java.lang.String)
+	 */
+	/**
+	 * Calls the OTP manager generate API for a single user. HTTP 401/403 are
+	 * mapped via {@code getStatusCode().value()}.
+	 *
+	 * @param mosipUserDto user identity for OTP
+	 * @param token        internal auth cookie token
+	 * @return OTP generate response
 	 */
 	@Override
 	public OtpGenerateResponseDto generateOTP(MosipUserDto mosipUserDto, String token) {
@@ -93,7 +114,7 @@ public class OTPGenerateServiceImpl implements OTPGenerateService {
 		} catch (HttpClientErrorException | HttpServerErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
@@ -101,7 +122,7 @@ public class OTPGenerateServiceImpl implements OTPGenerateService {
 							AuthErrorCode.RESPONSE_PARSE_ERROR.getErrorMessage(), ex);
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -117,6 +138,14 @@ public class OTPGenerateServiceImpl implements OTPGenerateService {
 		}
 	}
 
+	/**
+	 * Calls the OTP manager generate API for multiple notification channels.
+	 *
+	 * @param mosipUserDto user identity
+	 * @param otpUser      channels and context
+	 * @param token        internal auth cookie token
+	 * @return OTP generate response
+	 */
 	@Override
 	public OtpGenerateResponseDto generateOTPMultipleChannels(MosipUserDto mosipUserDto, OtpUser otpUser,
 			String token) {

@@ -4,24 +4,27 @@ import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.kernel.logger.logback.factory.Logfactory;
 
 /**
- * Console Logger Configuration.
- * 
+ * Factory for SLF4J loggers used by this adapter.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath. Logging
+ * goes through {@code kernel-core}'s {@link Logfactory} rather than a
+ * service-local appender.
+ *
  * @author Sagar Mahapatra
  * @since 1.0.0
- *
  */
 public class LoggerConfiguration {
 	/**
-	 * Private Constructor to prevent instantiation.
+	 * Private constructor to prevent instantiation.
 	 */
 	private LoggerConfiguration() {
 	}
 
 	/**
-	 * This method sets the logger target, and returns appender.
-	 * 
-	 * @param clazz the class.
-	 * @return the appender.
+	 * Returns an SLF4J {@link Logger} bound to the given class.
+	 *
+	 * @param clazz the class that will emit log statements
+	 * @return the logger for {@code clazz}
 	 */
 	public static Logger logConfig(Class<?> clazz) {
 		return Logfactory.getSlf4jLogger(clazz);

@@ -10,12 +10,22 @@ import io.mosip.kernel.auth.defaultimpl.exception.AuthManagerException;
 import io.mosip.kernel.core.authmanager.model.OtpUser;
 
 /**
+ * Validates required fields on {@link OtpUser} before send-OTP. Pre-registration
+ * is restricted to a single OTP channel.
+ *
  * @author Ramadurai Pandian
  *
  */
 @Component
 public class OtpValidator {
 
+	/**
+	 * Ensures app id, context, channel, user id, and userid type are present.
+	 *
+	 * @param otpUser OTP send request
+	 * @throws AuthManagerException if a required field is missing or prereg uses
+	 *                              multiple channels
+	 */
 	public void validateOTPUser(OtpUser otpUser) {
 
 		if (otpUser.getAppId() == null) {

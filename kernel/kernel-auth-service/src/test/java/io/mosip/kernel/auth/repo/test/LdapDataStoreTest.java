@@ -1,3 +1,8 @@
+/**
+ * Commented-out LDAP datastore tests for {@code LdapDataStore} authenticate,
+ * user CRUD, roles, and password flows. The entire class is disabled as a
+ * block comment and is not executed.
+ */
 /*
  * package io.mosip.kernel.auth.repo.test;
  * 

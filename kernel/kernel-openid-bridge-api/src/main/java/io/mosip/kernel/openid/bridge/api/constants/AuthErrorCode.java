@@ -2,6 +2,9 @@ package io.mosip.kernel.openid.bridge.api.constants;
 
 /**
  * Error Code for Auth Adapter
+ * <p>
+ * HTTP-aligned MOSIP error codes used when token validation or authorization
+ * fails in the OpenID Bridge / auth-code proxy (typically mapped to 401/403).
  * 
  * @author Urvil Joshi
  * @since 1.0.0
@@ -9,16 +12,20 @@ package io.mosip.kernel.openid.bridge.api.constants;
  */
 public enum AuthErrorCode {
 	/**
-	 * UNAUTHORIZED
+	 * UNAUTHORIZED — authentication failed (invalid or missing token). MOSIP code
+	 * {@code KER-ATH-401}.
 	 */
 	UNAUTHORIZED("KER-ATH-401", "Authentication Failed"),
 	/**
-	 * FORBIDDEN
+	 * Compact JWT is not {@code header.payload.signature}. MOSIP code
+	 * {@code KER-ATH-401}.
+	 */
+	INVALID_TOKEN("KER-ATH-401", "Authentication Failed : Invalid Token :"),
+	/**
+	 * FORBIDDEN — the caller is authenticated but not allowed to access the
+	 * resource. MOSIP code {@code KER-ATH-403}.
 	 */
 	FORBIDDEN("KER-ATH-403", "Forbidden"),
-	/**
-	 * FORBIDDEN
-	 */
 	
 	;
 	

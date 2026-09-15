@@ -18,9 +18,9 @@ import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
@@ -48,17 +48,28 @@ import io.mosip.kernel.core.http.RequestWrapper;
 import io.mosip.kernel.core.http.ResponseWrapper;
 import io.mosip.kernel.openid.bridge.api.service.AuthService;
 
+/**
+ * MockMvc tests for {@link AuthController} validate-token, OTP, client-secret,
+ * logout, roles, user details, RID, and individual-id endpoints.
+ * <p>
+ * Uses Boot 4 {@link AutoConfigureMockMvc} from
+ * {@code org.springframework.boot.webmvc.test.autoconfigure} and
+ * {@link MockitoBean} for {@link AuthService}.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 @AutoConfigureMockMvc
 public class AuthControllerTest {
 
+	/** Whether auth cookies are marked Secure. */
 	@Value("${mosip.security.secure-cookie:false}")
 	private boolean isSecureCookie;
 
+	/** Splitter used when encoding login redirect URIs. */
 	@Value("${mosip.kernel.auth-code-url-splitter:#URISPLITTER#}")
 	private String urlSplitter;
 
+	/** Allowed login/logout redirect URLs from test properties. */
 	@Value("#{'${auth.allowed.urls}'.split(',')}")
 	private List<String> allowedUrls;
 
@@ -73,18 +84,27 @@ public class AuthControllerTest {
 	 * Autowired reference for {@link AuthService}
 	 */
 
-	@MockBean
+	@MockitoBean
 	private AuthService authService;
 
+	/** MockMvc for HTTP calls against the auth controller. */
 	@Autowired
 	private MockMvc mockMvc;
 
+	/** JSON mapper used to serialize request wrappers. */
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	/** Auth controller from the test context. */
 	@Autowired
 	private AuthController authController;
 	
+	/**
+	 * Asserts POST /authorize/validateToken returns the user when the
+	 * Authorization cookie is valid.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	@Test
 	public void getValidateTokenTest() throws Exception {
 
@@ -112,6 +132,11 @@ public class AuthControllerTest {
 	}
 	
 	@Test
+	/**
+	 * Asserts validateToken returns KER-ATH-007 when the cookie is not Authorization.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getValidateTokenNullTokenTest() throws Exception {
 
 		// resp
@@ -138,6 +163,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts validateToken error path when no Authorization cookie is sent.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getValidateTokenNullCookieTest() throws Exception {
 
 		// resp
@@ -164,6 +194,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts send-OTP HTTP endpoint returns success from the mocked AuthService.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getDetailsForValidateOtpTest() throws Exception {
 
 		// request
@@ -186,6 +221,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts client-id/secret authenticate HTTP endpoint returns a token cookie.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void clientIdSecretKeyTest() throws Exception {
 
 		// request
@@ -204,6 +244,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts logout/invalidate HTTP endpoint returns success.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void invalidateTokenTest() throws Exception {
 		// request
 		RequestWrapper<ClientSecret> req = new RequestWrapper<>();
@@ -221,6 +266,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts GET roles HTTP endpoint returns the mocked role list.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getAllRolesTest() throws Exception {
 
 		RolesListDto rolesListDto = new RolesListDto();
@@ -236,6 +286,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts user-details HTTP endpoint returns the mocked user list.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getListOfUsersDetailsTest() throws Exception {
 
 		// resp
@@ -263,6 +318,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts salted user-details HTTP endpoint returns the mocked salts.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getUserDetailsWithSaltTest() throws Exception {
 
 		// resp
@@ -287,13 +347,18 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts RID lookup HTTP endpoint returns the mocked RID.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getRIdTest() throws Exception {
 		// resp
 		RIdDto rIdDto = new RIdDto();
 		rIdDto.setRId("mock-rid");
 		when(authService.getRidBasedOnUid(Mockito.any(), Mockito.any())).thenReturn(rIdDto);
 		mockMvc.perform(get("/rid/ida/10022").contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk())
-				.andExpect(jsonPath("$.response.rid", is(rIdDto.getRId())));
+				.andExpect(jsonPath("$.response.rId", is(rIdDto.getRId())));
 	}
 
 	/*
@@ -468,6 +533,11 @@ public class AuthControllerTest {
 	 * }
 	 */
 	@Test
+	/**
+	 * Asserts individual-id lookup HTTP endpoint returns the mocked id.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getIndividualIdTest() throws Exception {
 
 		// resp
@@ -481,6 +551,11 @@ public class AuthControllerTest {
 	}
 
 	@Test
+	/**
+	 * Asserts users-details HTTP endpoint returns the mocked user details.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void getUsersDetailsTest() throws Exception {
 
 		// resp

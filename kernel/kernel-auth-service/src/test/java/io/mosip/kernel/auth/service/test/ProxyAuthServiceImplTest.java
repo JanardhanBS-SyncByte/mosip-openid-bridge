@@ -27,39 +27,59 @@ import java.util.ArrayList;
 import java.util.List;
 
 
+/**
+ * Unit tests for {@link ProxyAuthServiceImpl} OTP send/validate and username
+ * login when Keycloak, OTP, and token collaborators are mocked.
+ */
 @RunWith(MockitoJUnitRunner.class)
 public class ProxyAuthServiceImplTest {
+    /** Mock proxy JWT token generator. */
     @Mock
     private ProxyTokenGenerator proxyTokenGenarator;
 
+    /** Mock Keycloak IAM repository. */
     @Mock
     KeycloakImpl keycloakImpl;
 
+    /** Mock token generator. */
     @Mock
     TokenGenerator tokenGenerator;
 
+    /** Mock token validator. */
     @Mock
     TokenValidator tokenValidator;
 
+    /** Mock custom token store. */
     @Mock
     TokenService customTokenServices;
 
+    /** Mock OTP send/validate service. */
     @Mock
     OTPService oTPService;
 
+    /** Mock UIN lookup service. */
     @Mock
     UinService uinService;
 
+    /** Mock MOSIP environment properties. */
     @Mock
     MosipEnvironment mosipEnvironment;
 
+    /** Mock JSON mapper. */
     @Mock
     ObjectMapper objectmapper;
 
+    /** {@link ProxyAuthServiceImpl} under test with mocks injected. */
     @InjectMocks
     ProxyAuthServiceImpl proxyAuthServiceImpl;
 
 
+    /**
+     * Asserts OTP send for a UIN user succeeds when {@code sendOTPForUin} returns
+     * success.
+     *
+     * @throws Exception if authenticate fails
+     */
     @Test
     public void authenticateWithOtp_WithValidUIN_ThenPass() throws Exception {
         OtpUser otpUser=new OtpUser();
@@ -78,6 +98,11 @@ public class ProxyAuthServiceImplTest {
     }
 
 
+    /**
+     * Asserts OTP send for a UIN user succeeds when {@code proxyOtp} is true.
+     *
+     * @throws Exception if authenticate fails
+     */
     @Test
     public void authenticateWithOtp_WithproxyOtpAsTrue_ThenPass() throws Exception {
 
@@ -97,6 +122,12 @@ public class ProxyAuthServiceImplTest {
         Assert.assertEquals(authNResponseDto.getStatus(),AuthConstant.SUCCESS_STATUS);
     }
 
+    /**
+     * Asserts OTP send for a USERID user succeeds when {@code sendOTP} returns
+     * success.
+     *
+     * @throws Exception if authenticate fails
+     */
     @Test
     public void authenticateWithOtp_WithUserId_ThenPass() throws Exception {
         OtpUser otpUser=new OtpUser();
@@ -114,6 +145,12 @@ public class ProxyAuthServiceImplTest {
         Assert.assertEquals(authNResponseDto.getStatus(),AuthConstant.SUCCESS_STATUS);
     }
 
+    /**
+     * Asserts an unknown userid type raises {@link AuthManagerException} with
+     * {@code Invalid User Id type}.
+     *
+     * @throws Exception if authenticate fails unexpectedly
+     */
     @Test
     public void authenticateWithOtp_WithInvalidDetails_ThenFail() throws Exception {
         OtpUser otpUser=new OtpUser();
@@ -131,6 +168,11 @@ public class ProxyAuthServiceImplTest {
         }
     }
 
+    /**
+     * Asserts OTP validation returns success when {@code validateOTP} succeeds.
+     *
+     * @throws Exception if authenticate fails
+     */
     @Test
     public void authenticateUserWithOtp_ValidDatails_thenPass() throws Exception {
         UserOtp userOtp=new UserOtp();
@@ -152,6 +194,12 @@ public class ProxyAuthServiceImplTest {
         Assert.assertEquals(authNResponseDto.getStatus(),AuthConstant.SUCCESS_STATUS);
     }
 
+    /**
+     * Invokes username/password authenticate on the proxy service (no assertion;
+     * collaborators remain mocked).
+     *
+     * @throws Exception if authenticate fails
+     */
     @Test
     public void authenticateUserWithOtp_WithproxyOtpAsTrue_ThenPass() throws Exception {
 
@@ -164,5 +212,3 @@ public class ProxyAuthServiceImplTest {
 
 
 }
-
-

@@ -16,9 +16,9 @@ import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.test.context.junit4.SpringRunner;
 
@@ -32,21 +32,39 @@ import io.mosip.kernel.auth.defaultadapter.helper.TokenValidationHelper;
 import io.mosip.kernel.auth.defaultadapter.model.AuthToken;
 import io.mosip.kernel.openid.bridge.model.MosipUserDto;
 
+/**
+ * Tests {@link AuthHandler#retrieveUser} mapping a validated JWT into Spring
+ * Security {@link UserDetails} with MOSIP roles.
+ * <p>
+ * Uses {@link MockitoBean} (Boot 4 replacement for {@code @MockBean}) for
+ * {@link TokenValidationHelper}. {@link AutoConfigureMockMvc} lives in
+ * {@code org.springframework.boot.webmvc.test.autoconfigure} when MVC tests
+ * need it.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 public class AuthHandlerTest extends AuthHandler {
 
-	
-	
+
+
+	/** Rest interceptor from the adapter test context. */
 	@Autowired
 	private RestTemplateInterceptor restInterceptor;
-	
-	@MockBean
+
+	/** Token validation collaborator replaced with a Mockito bean. */
+	@MockitoBean
 	private TokenValidationHelper validationHelper;
-	
+
+	/** Whether SSL verification is bypassed in the adapter (test property). */
 	@Value("${mosip.kernel.auth.adapter.ssl-bypass:true}")
 	private boolean sslBypass;
-	
+
+	/**
+	 * Asserts retrieveUser returns a user with {@code ROLE_PROCESSOR} when
+	 * validation helper returns a PROCESSOR {@link MosipUserDto}.
+	 *
+	 * @throws Exception if JWT construction or retrieval fails
+	 */
 	@Test
 	public void retrieveUserTest() throws Exception {
 

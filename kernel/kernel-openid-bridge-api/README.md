@@ -2,54 +2,60 @@
 
 ## Overview
 
-This library provides server-side functions related to login using the **Authorization Code Flow**. The Authorization Code grant type is used by confidential and public clients to exchange an authorization code for an access token. For an overview on Authorization Code grant type, [refer here](https://oauth.net/2/grant-types/authorization-code/).
+**Kernel OpenID Bridge API** is the published library of OpenID Connect DTOs, constants, and service interfaces used by the adapter, auth-code proxy, and auth manager.
 
-## Features
+It has **no** HTTP controllers and **no** Spring Boot main class. Siblings depend on it with **no** `<version>` (parent `dependencyManagement` = `${project.version}`).
 
-- Provides REST APIs for login, logout, and online token validation functionalities.
+Parent: [`../README.md`](../README.md)
 
-## Local Setup
+---
 
-### Usage
+# Local Setup
 
-1. To use this API, add it to your project's dependency list:
+## Prerequisites
+- **JDK:** 21
+- **Maven:** 3.9+
+- commons **`kernel-core` 1.4.1-SNAPSHOT** installed first
+
+## Usage
 
 ```xml
 <dependency>
     <groupId>io.mosip.kernel</groupId>
     <artifactId>kernel-openid-bridge-api</artifactId>
-    <version>${project.version}</version>
+    <version>1.4.1-SNAPSHOT</version>
 </dependency>
+```
+
+Reactor siblings omit `<version>`.
+
+## Installation
+
+From `kernel/`:
+
+```text
+mvn -pl kernel-openid-bridge-api -am clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 ```
 
 ## Configuration
 
-### Properties
+This library does not bind MOSIP config by itself. Hosts that implement the interfaces take IAM properties from [mosip-config](https://github.com/mosip/mosip-config).
 
-Add the following properties to your configuration:
+Scan / import package: `io.mosip.kernel.openid.bridge`.
 
-```properties
-auth.server.admin.validate.url=https://<host>/v1/authmanager/authorize/admin/validateToken
-mosip.iam.module.clientID=<module-client-id>
-mosip.iam.module.clientsecret=<module-client-secret>
-mosip.iam.module.redirecturi=https://<host>/<context-path>/login-redirect/	
-mosip.iam.module.admin_realm_id=<realm-id>	
-mosip.iam.base-url=<iam-bas-url>	
-mosip.iam.authorization_endpoint=${mosip.iam.base-url}/auth/realms/{realmId}/protocol/openid-connect/auth
-mosip.iam.token_endpoint=${mosip.iam.base-url}/auth/realms/{realmId}/protocol/openid-connect/token
-```
-
-### Bean Scanning
-
-Add the following package to scan for beans:
-
-```java
-io.mosip.kernel-openid-bridge-api.*
-```
+---
 
 ## Documentation
 
-For technical details, refer to the [MOSIP Kernel OpenID Bridge API Documentation](https://mosip.github.io/documentation/1.2.0/kernel-authentication-manager-service.html).
+### API Documentation
+
+[MOSIP Kernel Authentication Manager Service](https://mosip.github.io/documentation/1.2.0/kernel-authentication-manager-service.html)
+
+### Product Documentation
+
+[OpenID Bridge developer guide](https://docs.mosip.io/1.2.0/modules/commons/openid-bridge-developer-guide)
+
+---
 
 ## Contribution & Community
 
@@ -59,6 +65,8 @@ For technical details, refer to the [MOSIP Kernel OpenID Bridge API Documentatio
 
 • For any GitHub issues: [Report here](https://github.com/mosip/mosip-openid-bridge/issues)
 
+---
+
 ## License
 
-This project is licensed under the [Mozilla Public License 2.0](LICENSE).
+This project is licensed under the [Mozilla Public License 2.0](../../LICENSE).

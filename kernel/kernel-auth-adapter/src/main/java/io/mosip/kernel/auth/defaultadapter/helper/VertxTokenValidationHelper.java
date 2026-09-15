@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import com.auth0.jwt.JWT;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -33,27 +34,67 @@ import io.mosip.kernel.openid.bridge.model.MosipUserDto;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.ext.web.RoutingContext;
 
+/**
+ * Token validation for Vert.x routes: extracts the Authorization cookie,
+ * validates online or offline, then checks required roles.
+ * <p>
+ * Failures are written as MOSIP JSON on the {@link RoutingContext} rather than
+ * thrown to Spring MVC. Vert.x 3.9.16 remains a provided dependency.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
+ */
 @Lazy
 @Component
 public class VertxTokenValidationHelper {
     
+    /**
+     * Logger for validation and error-body write failures.
+     */
     private static final Logger LOGGER = LoggerFactory.getLogger(VertxTokenValidationHelper.class);
 
+    /**
+     * Historical admin validate URL (unused by current user-info validation).
+     */
     @Value("${auth.server.admin.validate.url:}")
 	private String adminValidateUrl;
 
+    /**
+     * When {@code true}, JWKS offline validation is attempted first.
+     */
     @Value("${auth.server.admin.offline.vertx.token.validate:true}")
 	private boolean offlineTokenValidate;
 
+    /**
+     * Active Spring profile; {@code local} selects deprecated local offline
+     * validation.
+     */
     @Value("${spring.profiles.active:}")
 	String activeProfile;
 
+    /**
+     * Mapper used to write MOSIP error envelopes onto the Vert.x response.
+     */
     @Autowired
 	private ObjectMapper objectMapper;
 
+    /**
+     * Performs expiry, signature, audience, user-info, and MosipUser mapping.
+     */
     @Autowired
     private ValidateTokenHelper validateTokenHelper;
 
+    /**
+     * Extracts the cookie token, validates it, and ensures {@code roles} intersect
+     * the user's comma-separated roles.
+     *
+     * @param restTemplate   client for online/JWKS fallback
+     * @param routingContext Vert.x request/response
+     * @param roles          required roles
+     * @return the MOSIP user, or {@code null} after writing an error response
+     * @throws JsonParseException      if the request body cannot be parsed
+     * @throws JsonMappingException    if the request body cannot be mapped
+     * @throws IOException             if error JSON cannot be written
+     */
     public MosipUserDto getTokenValidatedVertxUserResponse(RestTemplate restTemplate, RoutingContext routingContext, 
                 String[] roles) throws JsonParseException, JsonMappingException, IOException {
 
@@ -97,9 +138,26 @@ public class VertxTokenValidationHelper {
         return mosipUserDto;
     }
 
+    /**
+     * Online user-info validation; writes Vert.x errors for 417/401/403/other.
+     *
+     * @param token          access-token JWT
+     * @param restTemplate   HTTP client
+     * @param routingContext Vert.x request/response
+     * @return the MOSIP user, or {@code null} after writing an error
+     * @throws JsonParseException      if the request body cannot be parsed
+     * @throws JsonMappingException    if the request body cannot be mapped
+     * @throws IOException             if error JSON cannot be written
+     */
     private MosipUserDto doOnlineTokenValidation(String token, RestTemplate restTemplate, 
                     RoutingContext routingContext) throws JsonParseException, JsonMappingException, 
                     IOException {
+        try {
+            JWT.decode(token);
+        } catch (JWTDecodeException e) {
+            sendErrors(routingContext, AuthAdapterErrorCode.INVALID_TOKEN, AuthAdapterConstant.NOTAUTHENTICATED);
+            return null;
+        }
         ImmutablePair<HttpStatus, MosipUserDto> validateResp = validateTokenHelper.doOnlineTokenValidation(token, restTemplate);
         if (validateResp.getLeft() == HttpStatus.EXPECTATION_FAILED) {
             sendErrors(routingContext, AuthAdapterErrorCode.CONNECT_EXCEPTION, AuthAdapterConstant.INTERNEL_SERVER_ERROR);
@@ -120,6 +178,18 @@ public class VertxTokenValidationHelper {
         return validateResp.getRight();
     }
 
+    /**
+     * Local profile uses deprecated offline validation; otherwise JWKS offline
+     * with online fallback.
+     *
+     * @param token          access-token JWT
+     * @param restTemplate   HTTP client
+     * @param routingContext Vert.x request/response
+     * @return the MOSIP user, or {@code null} after writing an error
+     * @throws JsonParseException      if the request body cannot be parsed
+     * @throws JsonMappingException    if the request body cannot be mapped
+     * @throws IOException             if error JSON cannot be written
+     */
     private MosipUserDto doOfflineTokenValidation(String token, RestTemplate restTemplate, 
                 RoutingContext routingContext) throws JsonParseException, JsonMappingException, 
                 IOException {
@@ -130,11 +200,29 @@ public class VertxTokenValidationHelper {
         return doOfflineEnvTokenValidation(token, restTemplate, routingContext);
     }
 
+    /**
+     * Validates signature with JWKS; falls back to online user-info when the
+     * public key is unavailable.
+     *
+     * @param jwtToken       access-token JWT
+     * @param restTemplate   HTTP client
+     * @param routingContext Vert.x request/response
+     * @return the MOSIP user, or {@code null} after writing an error
+     * @throws JsonParseException      if the request body cannot be parsed
+     * @throws JsonMappingException    if the request body cannot be mapped
+     * @throws IOException             if error JSON cannot be written
+     */
     private MosipUserDto doOfflineEnvTokenValidation(String jwtToken, RestTemplate restTemplate, 
                         RoutingContext routingContext) throws JsonParseException, JsonMappingException, 
                         IOException {
 
-        DecodedJWT decodedJWT = JWT.decode(jwtToken);
+        DecodedJWT decodedJWT;
+        try {
+            decodedJWT = JWT.decode(jwtToken);
+        } catch (JWTDecodeException e) {
+            sendErrors(routingContext, AuthAdapterErrorCode.INVALID_TOKEN, AuthAdapterConstant.NOTAUTHENTICATED);
+            return null;
+        }
 
         PublicKey publicKey = validateTokenHelper.getPublicKey(decodedJWT);
         // Still not able to get the public key either from server or local cache,
@@ -153,6 +241,13 @@ public class VertxTokenValidationHelper {
         return validateTokenHelper.buildMosipUser(decodedJWT, jwtToken);
     }
 
+    /**
+     * Writes a single {@link ServiceError} onto the Vert.x response.
+     *
+     * @param routingContext the Vert.x context
+     * @param errorCode      MOSIP error code
+     * @param statusCode     HTTP status
+     */
     private void sendErrors(RoutingContext routingContext, AuthAdapterErrorCode errorCode, int statusCode) {
         
         List<ServiceError> errors = new ArrayList<>();
@@ -162,6 +257,14 @@ public class VertxTokenValidationHelper {
 		sendErrors(routingContext, errors, statusCode);
 	}
 
+    /**
+     * Writes a MOSIP {@link ResponseWrapper} of errors, copying {@code id} and
+     * {@code version} from the Vert.x JSON body when present.
+     *
+     * @param routingContext the Vert.x context
+     * @param errors         service errors
+     * @param statusCode     HTTP status
+     */
     private void sendErrors(RoutingContext routingContext, List<ServiceError> errors, int statusCode) {
 
 		ResponseWrapper<ServiceError> errorResponse = new ResponseWrapper<>();
@@ -186,5 +289,3 @@ public class VertxTokenValidationHelper {
 		}
 	}
 }   
-
-

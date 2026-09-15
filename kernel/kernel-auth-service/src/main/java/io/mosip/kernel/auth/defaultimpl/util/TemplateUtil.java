@@ -52,46 +52,98 @@ import io.mosip.kernel.core.templatemanager.spi.TemplateManager;
 import io.mosip.kernel.templatemanager.velocity.builder.TemplateManagerBuilderImpl;
 
 /**
+ * Loads masterdata OTP email/SMS templates (kernel-core Velocity) and merges
+ * the OTP value into template variables. Uses {@link DateUtils2} is not needed
+ * here; templates come from kernel-core, not a separate velocity artifact.
+ *
  * @author Ramadurai Pandian
  *
  */
 @Component
 public class TemplateUtil {
 
+	/**
+	 * Velocity template manager built after construction.
+	 */
 	private TemplateManager templateManager;
 
+	/**
+	 * Masterdata template API URL.
+	 */
 	@Autowired
 	MosipEnvironment mosipEnvironment;
 
+	/**
+	 * Notification language type and primary/secondary language properties.
+	 */
 	@Autowired
 	Environment environment;
 
+	/**
+	 * RestTemplate for masterdata template HTTP GET.
+	 */
 	@Qualifier("authRestTemplate")
 	@Autowired
 	RestTemplate restTemplate;
 
+	/**
+	 * Jackson mapper for MOSIP {@code ResponseWrapper} bodies.
+	 */
 	@Autowired
 	private ObjectMapper mapper;
 
+	/**
+	 * Property key for notification language mode ({@code BOTH}/{@code PRIMARY}/{@code SECONDARY}).
+	 */
 	private static final String MOSIP_NOTIFICATION_LANGUAGE_TYPE = "mosip.notification.language-type";
 
+	/**
+	 * Property key for configured notification types (email/SMS).
+	 */
 	public static final String MOSIP_NOTIFICATIONTYPE = "mosip.notificationtype";
 
+	/**
+	 * Property key for primary language code.
+	 */
 	private static final String ENV_PRIMARY_LANGUAGE = "mosip.primary-language";
 
+	/**
+	 * Property key for secondary language code.
+	 */
 	private static final String ENV_SECONDARY_LANGUAGE = "mosip.secondary-language";
 
+	/**
+	 * Language mode: merge primary and secondary templates.
+	 */
 	private static final String BOTH = "BOTH";
 
+	/**
+	 * Language mode: primary language only.
+	 */
 	private static final String PRIMARY = "PRIMARY";
 
+	/**
+	 * Language mode: secondary language only.
+	 */
 	private static final String SECONDARY = "SECONDARY";
 
+	/**
+	 * Builds the kernel-core Velocity {@link TemplateManager}.
+	 */
 	@PostConstruct
 	private void loadTemplateManager() {
 		templateManager = new TemplateManagerBuilderImpl().build();
 	}
 
+	/**
+	 * Builds an email subject and body from masterdata templates for the
+	 * configured language type, merging {@code otp} into template variables.
+	 *
+	 * @param otp     generated OTP
+	 * @param otpUser context and extra template variables
+	 * @param token   internal auth token for masterdata
+	 * @return email template, or {@code null} if language type is unrecognized
+	 */
 	public OTPEmailTemplate getEmailTemplate(String otp, OtpUser otpUser, String token) {
 		OTPEmailTemplate otpEmailTemplate = null;
 		String primaryLanguage = null, secondaryLanguage = null;
@@ -161,6 +213,14 @@ public class TemplateUtil {
 		return otpEmailTemplate;
 	}
 
+	/**
+	 * Merges OTP (and optional extra variables) into a Velocity template string.
+	 *
+	 * @param otp               OTP value bound as {@code otp}
+	 * @param emailContent      raw template text
+	 * @param templateVariables extra variables, or {@code null} for OTP only
+	 * @return merged template
+	 */
 	private String getMergedEmailContent(String otp, String emailContent, Map<String, Object> templateVariables) {
 		String template = null;
 		InputStream templateInputStream = new ByteArrayInputStream(emailContent.getBytes(Charset.forName("UTF-8")));
@@ -184,6 +244,17 @@ public class TemplateUtil {
 		return template;
 	}
 
+	/**
+	 * Fetches primary and/or secondary language template text and concatenates
+	 * content (not subject) with a blank line.
+	 *
+	 * @param otpUser           OTP context
+	 * @param templateType      masterdata template suffix (for example {@code email-subject-template})
+	 * @param token             internal auth token
+	 * @param primaryLanguage   primary language code, or {@code null}
+	 * @param secondaryLanguage secondary language code, or {@code null}
+	 * @return combined or single-language template text
+	 */
 	private String getEmailData(OtpUser otpUser, String templateType, String token, String primaryLanguage,
 			String secondaryLanguage) {
 		String emailPrimaryData = null, emailSecondaryData = null;
@@ -209,6 +280,17 @@ public class TemplateUtil {
 		return templateData;
 	}
 
+	/**
+	 * GET masterdata template for {@code language} and {@code otpUser} context.
+	 * Uses {@code HttpStatus} comparison; client/server errors use
+	 * {@code getStatusCode().value()} for 401/403 mapping.
+	 *
+	 * @param otpUser      OTP context
+	 * @param templateType template suffix, or {@code null} for context-only URL
+	 * @param token        internal auth cookie token
+	 * @param language     template language code
+	 * @return template file text
+	 */
 	public String getMasterDataForLanguage(OtpUser otpUser, String templateType, String token, String language) {
 		OtpTemplateResponseDto otpTemplateResponseDto = null;
 		final String url;
@@ -250,14 +332,14 @@ public class TemplateUtil {
 		} catch (HttpClientErrorException | HttpServerErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
 					throw new BadCredentialsException("Authentication failed from Internal token services");
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -284,6 +366,15 @@ public class TemplateUtil {
 		return templateText;
 	}
 
+	/**
+	 * Builds the SMS OTP message from masterdata {@code sms-template} for the
+	 * configured language type.
+	 *
+	 * @param otp     generated OTP
+	 * @param otpUser context and extra template variables
+	 * @param token   internal auth token
+	 * @return merged SMS text, or {@code null} if language type is unrecognized
+	 */
 	public String getOtpSmsMessage(String otp, OtpUser otpUser, String token) {
 		String primaryLanguage = null, secondaryLanguage = null;
 		if (BOTH.equals(environment.getProperty(MOSIP_NOTIFICATION_LANGUAGE_TYPE))) {

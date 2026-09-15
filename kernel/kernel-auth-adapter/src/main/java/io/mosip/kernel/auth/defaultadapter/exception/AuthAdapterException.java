@@ -11,21 +11,27 @@ import org.springframework.security.core.AuthenticationException;
 import io.mosip.kernel.core.exception.ServiceError;
 
 /**
- * @author M1049825
+ * Authentication failure raised by adapter interceptors when a self-token
+ * cannot be obtained or similar adapter-level errors occur.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
  *
+ * @author M1049825
  */
 public class AuthAdapterException extends AuthenticationException {
 
 	/**
-	 * 
+	 * MOSIP error code associated with this exception.
 	 */
-
 	private String errorCode;
+	/**
+	 * Serialization identifier.
+	 */
 	private static final long serialVersionUID = 4060346018688709387L;
 
 	/**
-	 * Constructor the initialize Handler exception
-	 * 
+	 * Creates an exception with an error code and message.
+	 *
 	 * @param errorCode    The error code for this exception
 	 * @param errorMessage The error message for this exception
 	 */
@@ -34,6 +40,13 @@ public class AuthAdapterException extends AuthenticationException {
 		this.errorCode = errorCode;
 	}
 
+	/**
+	 * Creates an exception with an error code, message, and root cause.
+	 *
+	 * @param errorCode    The error code for this exception
+	 * @param errorMessage The error message for this exception
+	 * @param rootCause    the underlying cause
+	 */
 	public AuthAdapterException(String errorCode, String errorMessage, Throwable rootCause) {
 		super(errorMessage, rootCause);
 		this.errorCode = errorCode;
@@ -45,7 +58,11 @@ public class AuthAdapterException extends AuthenticationException {
 	private List<ServiceError> list = new ArrayList<>();
 
 	/**
-	 * @param list The error list.
+	 * Creates an exception whose message is {@code errorCode} and whose
+	 * {@link #list} is the given service errors.
+	 *
+	 * @param errorCode used as the exception message
+	 * @param list      The error list.
 	 */
 	public AuthAdapterException(String errorCode, List<ServiceError> list) {
 		super(errorCode);
@@ -54,7 +71,7 @@ public class AuthAdapterException extends AuthenticationException {
 
 	/**
 	 * Getter for error list.
-	 * 
+	 *
 	 * @return The error list.
 	 */
 	public List<ServiceError> getList() {

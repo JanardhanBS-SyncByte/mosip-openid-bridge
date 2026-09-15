@@ -26,11 +26,20 @@ import io.mosip.kernel.auth.defaultadapter.handler.CustomJWTAuthHandler;
 import io.mosip.kernel.auth.defaultadapter.model.AuthToken;
 import io.mosip.kernel.openid.bridge.model.MosipUserDto;
 
+/**
+ * Tests {@link CustomJWTAuthHandler#retrieveUser} for a valid HS256 JWT and for
+ * signature/expiry failures that must raise {@link AuthManagerException}.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 
 @RunWith(SpringRunner.class)
 public class CustomAuthHandlerTest extends CustomJWTAuthHandler {
 
+	/**
+	 * Asserts a correctly signed JWT yields a single granted authority.
+	 *
+	 * @throws Exception if JWT construction or retrieval fails
+	 */
 	@Test
 	public void retrieveUserTest() throws Exception {
 
@@ -56,6 +65,12 @@ public class CustomAuthHandlerTest extends CustomJWTAuthHandler {
 	}
 	
 	
+	/**
+	 * Asserts {@link AuthManagerException} when the JWT is signed with a key that
+	 * does not match the handler configuration.
+	 *
+	 * @throws Exception if JWT construction fails
+	 */
 	@Test(expected=AuthManagerException.class)
 	public void retrieveUserSignExceptionTest() throws Exception {
 
@@ -81,6 +96,11 @@ public class CustomAuthHandlerTest extends CustomJWTAuthHandler {
 	}
 	
 	
+	/**
+	 * Asserts {@link AuthManagerException} when the JWT is already expired.
+	 *
+	 * @throws Exception if JWT construction fails
+	 */
 	@Test(expected=AuthManagerException.class)
 	public void retrieveUserJWTExceptionTest() throws Exception {
 

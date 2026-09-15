@@ -5,22 +5,22 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * The Class Documents.
+ * ID Repository document entry: a category (document type) and its encoded value.
  *
  * @author Manoj SP
- */
-
-/**
- * Instantiates a new documents.
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class Documents {
 
-	/** The doc type. */
+	/**
+	 * Document category or type code from ID Repository.
+	 */
 	private String category;
 
-	/** The doc value. */
+	/**
+	 * Encoded document content (typically base64).
+	 */
 	private String value;
 }

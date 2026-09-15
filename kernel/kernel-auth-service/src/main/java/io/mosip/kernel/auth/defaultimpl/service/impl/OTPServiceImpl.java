@@ -59,6 +59,10 @@ import io.mosip.kernel.core.http.RequestWrapper;
 import io.mosip.kernel.core.http.ResponseWrapper;
 
 /**
+ * Production ({@code !local}) OTP send/validate: generates OTP, merges
+ * masterdata templates, and notifies via email/SMS. Validates OTP against the
+ * OTP manager using Keycloak client-credentials tokens.
+ *
  * @author Ramadurai Pandian
  *
  */
@@ -74,61 +78,123 @@ public class OTPServiceImpl implements OTPService {
 	 * entities.MosipUserDto, java.lang.String)
 	 */
 
+	/**
+	 * RestTemplate for OTP manager and notification APIs.
+	 */
 	@Qualifier("authRestTemplate")
 	@Autowired
 	RestTemplate restTemplate;
 
+	/**
+	 * OTP generate/verify and sender API URLs.
+	 */
 	@Autowired
 	MosipEnvironment mosipEnvironment;
 
+	/**
+	 * OTP manager generate client.
+	 */
 	@Autowired
 	OTPGenerateService oTPGenerateService;
 
+	/**
+	 * Mapper for MOSIP response wrappers.
+	 */
 	@Autowired
 	private ObjectMapper mapper;
 
+	/**
+	 * Email/SMS template merge from masterdata.
+	 */
 	@Autowired
 	private TemplateUtil templateUtil;
 
+	/**
+	 * Validates required OTP request fields.
+	 */
 	@Autowired
 	private OtpValidator authOtpValidator;
 
+	/**
+	 * Keycloak OpenID URL template including realm path param.
+	 */
 	@Value("${mosip.iam.open-id-url}")
 	private String keycloakOpenIdUrl;
 
+	/**
+	 * Default realm id.
+	 */
 	@Value("${mosip.iam.default.realm-id}")
 	private String realmId;
 
+	/**
+	 * Authmanager OAuth client id.
+	 */
 	@Value("${mosip.kernel.auth.client.id}")
 	private String authClientID;
 
+	/**
+	 * Pre-registration OAuth client id.
+	 */
 	@Value("${mosip.kernel.prereg.client.id}")
 	private String preregClientId;
 
+	/**
+	 * Pre-registration OAuth secret.
+	 */
 	@Value("${mosip.kernel.prereg.secret.key}")
 	private String preregSecretKey;
 
+	/**
+	 * Authmanager OAuth secret.
+	 */
 	@Value("${mosip.kernel.auth.secret.key}")
 	private String authSecret;
 
+	/**
+	 * IDA OAuth client id.
+	 */
 	@Value("${mosip.kernel.ida.client.id}")
 	private String idaClientID;
 
+	/**
+	 * IDA OAuth secret.
+	 */
 	@Value("${mosip.kernel.ida.secret.key}")
 	private String idaSecret;
 
+	/**
+	 * Admin OAuth client id.
+	 */
 	@Value("${mosip.admin.clientid}")
 	private String mosipAdminClientID;
 
+	/**
+	 * Admin OAuth secret.
+	 */
 	@Value("${mosip.admin.clientsecret}")
 	private String mosipAdminSecret;
 
+	/**
+	 * Default pre-reg user password (unused in this class).
+	 */
 	@Value("${mosip.iam.pre-reg_user_password}")
 	private String preRegUserPassword;
 
+	/**
+	 * Pre-registration realm id.
+	 */
 	@Value("${mosip.kernel.prereg.realm-id}")
 	private String preregRealmId;
 
+	/**
+	 * POSTs the SMS notification payload to the configured sender API.
+	 *
+	 * @param message SMS body
+	 * @param mobile  destination number
+	 * @param token   internal auth cookie token
+	 * @return SMS send result
+	 */
 	private SmsResponseDto sendOtpBySms(String message, String mobile, String token) {
 		try {
 			List<ServiceError> validationErrorsList = null;
@@ -161,6 +227,15 @@ public class OTPServiceImpl implements OTPService {
 		}
 	}
 
+	/**
+	 * Verifies OTP with the OTP manager and, on success, issues a Keycloak
+	 * password-grant token for the user (prereg uses a dedicated client).
+	 *
+	 * @param mosipUser user identity
+	 * @param otp       OTP value
+	 * @param appId     realm / app used for token grant
+	 * @return token DTO or failure status
+	 */
 	@Override
 	public MosipUserTokenDto validateOTP(MosipUserDto mosipUser, String otp, String appId) {
 		String key = new OtpGenerateRequest(mosipUser).getKey();
@@ -181,7 +256,7 @@ public class OTPServiceImpl implements OTPService {
 		} catch (Exception e) {
 			throw new AuthManagerException(String.valueOf(HttpStatus.UNAUTHORIZED.value()), e.getMessage(), e);
 		}
-		UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url).queryParam("key", key).queryParam("otp",
+		UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url).queryParam("key", key).queryParam("otp",
 				otp);
 		HttpHeaders headers = new HttpHeaders();
 		headers.set(AuthConstant.COOKIE, AuthConstant.AUTH_HEADER + token);
@@ -226,6 +301,14 @@ public class OTPServiceImpl implements OTPService {
 		return mosipUserDtoToken;
 	}
 
+	/**
+	 * Generates and sends OTP for UIN-based identities on requested channels.
+	 *
+	 * @param mosipUser user with mail/mobile
+	 * @param otpUser   channels and context
+	 * @param appId     application / realm context
+	 * @return send status
+	 */
 	@Override
 	public AuthNResponseDto sendOTPForUin(MosipUserDto mosipUser, OtpUser otpUser, String appId) {
 		AuthNResponseDto authNResponseDto = null;
@@ -241,7 +324,7 @@ public class OTPServiceImpl implements OTPService {
 		} catch (HttpClientErrorException | HttpServerErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
@@ -249,7 +332,7 @@ public class OTPServiceImpl implements OTPService {
 							AuthErrorCode.CLIENT_ERROR.getErrorMessage(), ex);
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -309,6 +392,15 @@ public class OTPServiceImpl implements OTPService {
 		return authNResponseDto;
 	}
 
+	/**
+	 * Generates and sends OTP for userid-based identities after field validation.
+	 *
+	 * @param mosipUser user with mail/mobile
+	 * @param otpUser   channels and context
+	 * @param appId     application / realm context
+	 * @return send status
+	 * @throws Exception if generation or send fails
+	 */
 	@Override
 	public AuthNResponseDto sendOTP(MosipUserDto mosipUser, OtpUser otpUser, String appId) throws Exception {
 		AuthNResponseDto authNResponseDto = null;
@@ -323,7 +415,7 @@ public class OTPServiceImpl implements OTPService {
 		} catch (HttpClientErrorException | HttpServerErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
@@ -331,7 +423,7 @@ public class OTPServiceImpl implements OTPService {
 							AuthErrorCode.CLIENT_ERROR.getErrorMessage(), ex);
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -390,12 +482,20 @@ public class OTPServiceImpl implements OTPService {
 		return authNResponseDto;
 	}
 
+	/**
+	 * POSTs the email notification payload to the configured sender API.
+	 *
+	 * @param emailTemplate subject and body
+	 * @param email         destination address
+	 * @param token         internal auth cookie token
+	 * @return email send result
+	 */
 	private OtpEmailSendResponseDto sendOtpByEmail(OTPEmailTemplate emailTemplate, String email, String token) {
 		ResponseEntity<String> response = null;
 		String url = mosipEnvironment.getOtpSenderEmailApi();
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON_UTF8));
+		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
 		OtpEmailSendResponseDto otpEmailSendResponseDto = null;
 		headers.set(AuthConstant.COOKIE, AuthConstant.AUTH_HEADER + token);
 		MultiValueMap<String, String> map = new LinkedMultiValueMap<String, String>();
@@ -424,7 +524,7 @@ public class OTPServiceImpl implements OTPService {
 		} catch (HttpClientErrorException | HttpServerErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
@@ -432,7 +532,7 @@ public class OTPServiceImpl implements OTPService {
 							AuthErrorCode.CLIENT_ERROR.getErrorMessage(), ex);
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -448,6 +548,13 @@ public class OTPServiceImpl implements OTPService {
 		return otpEmailSendResponseDto;
 	}
 
+	/**
+	 * Password grant for a username against the given realm (prereg user password).
+	 *
+	 * @param username user name
+	 * @param realm    Keycloak realm
+	 * @return token response
+	 */
 	private AccessTokenResponse getUserAccessToken(String username, String realm) {
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -462,6 +569,14 @@ public class OTPServiceImpl implements OTPService {
 		return response.getBody();
 	}
 
+	/**
+	 * Client-credentials grant for internal OTP-manager calls.
+	 *
+	 * @param clientID     OAuth client id
+	 * @param clientSecret OAuth secret
+	 * @param realmId      Keycloak realm
+	 * @return token response
+	 */
 	private AccessTokenResponse getAuthAccessToken(String clientID, String clientSecret, String realmId) {
 		HttpHeaders headers = new HttpHeaders();
 		if (realmId.equalsIgnoreCase(preregRealmId)) {
@@ -481,6 +596,13 @@ public class OTPServiceImpl implements OTPService {
 		return response.getBody();
 	}
 
+	/**
+	 * Form body for prereg password grant.
+	 *
+	 * @param username user name
+	 * @param realm    unused except as method contract
+	 * @return form fields
+	 */
 	private MultiValueMap<String, String> getAdminValueMap(String username, String realm) {
 		MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
 		if (realm.equalsIgnoreCase(preregRealmId)) {
@@ -496,6 +618,13 @@ public class OTPServiceImpl implements OTPService {
 		return map;
 	}
 
+	/**
+	 * Form body for client-credentials grant.
+	 *
+	 * @param clientID     OAuth client id
+	 * @param clientSecret OAuth secret
+	 * @return form fields
+	 */
 	private MultiValueMap<String, String> getClientValueMap(String clientID, String clientSecret) {
 		MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
 		map.add(AuthConstant.GRANT_TYPE, AuthConstant.CLIENT_CREDENTIALS);

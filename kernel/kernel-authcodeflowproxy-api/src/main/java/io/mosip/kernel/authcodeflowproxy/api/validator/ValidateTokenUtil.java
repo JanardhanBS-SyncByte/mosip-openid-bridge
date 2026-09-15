@@ -30,6 +30,7 @@ import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.exceptions.SignatureVerificationException;
 import com.auth0.jwt.impl.NullClaim;
 import com.auth0.jwt.interfaces.Claim;
@@ -43,7 +44,13 @@ import io.mosip.kernel.openid.bridge.api.constants.Errors;
 import io.mosip.kernel.openid.bridge.api.exception.ServiceException;
 
 /**
- * Token validator
+ * Offline JWT validator for the authorization-code flow proxy.
+ * <p>
+ * Verifies Keycloak (or compatible IdP) access and ID tokens without calling the auth
+ * manager: expiry via {@link DateUtils2}, optional issuer-host match against the JWKS
+ * URL, RSA signature against keys downloaded from {@code mosip.iam.certs_endpoint}
+ * ({@link UrlJwkProvider}), and optional {@code aud}/{@code azp} membership in the
+ * configured audience list.
  * 
  * @author Loganathan S
  *
@@ -51,25 +58,57 @@ import io.mosip.kernel.openid.bridge.api.exception.ServiceException;
 @Component
 public class ValidateTokenUtil {
 
+	/**
+	 * Logger for expiry, issuer, signature, and audience validation failures.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(ValidateTokenUtil.class);
 
+	/**
+	 * JWKS public keys cached by JWT {@code kid}.
+	 */
 	private Map<String, PublicKey> publicKeys = new HashMap<>();
 
+	/**
+	 * Keycloak (or IdP) JWKS / certs URL used for signature verification and issuer-host
+	 * comparison. Bound from {@code mosip.iam.certs_endpoint}.
+	 */
 	@Value("${mosip.iam.certs_endpoint:}")
 	private String certsPathUrl;
 
+	/**
+	 * When {@code true}, the JWT {@code iss} host must match the host of
+	 * {@link #certsPathUrl}. Bound from {@code auth.server.admin.issuer.domain.validate};
+	 * defaults to {@code true}.
+	 */
 	@Value("${auth.server.admin.issuer.domain.validate:true}")
 	private boolean validateIssuerDomain;
 
+	/**
+	 * When {@code true}, {@code aud} or {@code azp} must be in {@link #allowedAudience}.
+	 * Bound from {@code auth.server.admin.audience.claim.validate}; defaults to {@code true}.
+	 */
 	@Value("${auth.server.admin.audience.claim.validate:true}")
 	private boolean validateAudClaim;
 
+	/**
+	 * Allowed OAuth 2.0 audiences / authorized parties, loaded in {@link #init()} from
+	 * {@code auth.server.admin.allowed.audience.&lt;app&gt;} or
+	 * {@code auth.server.admin.allowed.audience}.
+	 */
 	// @Value("${auth.server.admin.allowed.audience:}")
 	private List<String> allowedAudience;
 
+	/**
+	 * Spring environment used to resolve application name and allowed-audience lists.
+	 */
 	@Autowired
 	private Environment environment;
 
+	/**
+	 * Loads {@link #allowedAudience} after property binding: prefers
+	 * {@code auth.server.admin.allowed.audience.&lt;spring.application.name&gt;}, then
+	 * {@code auth.server.admin.allowed.audience}, else an empty list.
+	 */
 	@PostConstruct
 	@SuppressWarnings("unchecked")
 	private void init() {
@@ -79,6 +118,12 @@ public class ValidateTokenUtil {
 				environment.getProperty("auth.server.admin.allowed.audience", List.class, Collections.EMPTY_LIST));
 	}
 
+	/**
+	 * Returns the first comma-separated value of {@code spring.application.name}.
+	 *
+	 * @return application name used as the audience property suffix
+	 * @throws RuntimeException if {@code spring.application.name} is missing or empty
+	 */
 	private String getApplicationName() {
 		String appNames = environment.getProperty("spring.application.name");
 		if (appNames != null && !appNames.isEmpty()) {
@@ -89,16 +134,43 @@ public class ValidateTokenUtil {
 		}
 	}
 	
+	/**
+	 * Validates {@code accessToken} and throws if it is not valid.
+	 *
+	 * @param accessToken compact JWT access or ID token
+	 * @throws ServiceException with {@link Errors#INVALID_TOKEN} when validation fails
+	 */
 	public void validateToken(String accessToken) {
 		if(!isTokenValid(accessToken).getKey()){
 			throw new ServiceException(Errors.INVALID_TOKEN.getErrorCode(), Errors.INVALID_TOKEN.getErrorMessage());
 		}
 	}
 	
+	/**
+	 * Decodes {@code jwtToken} and runs the full offline validation pipeline.
+	 *
+	 * @param jwtToken compact JWT
+	 * @return {@code (true, null)} if valid; otherwise {@code false} with
+	 *         {@link AuthErrorCode#INVALID_TOKEN}, {@link AuthErrorCode#UNAUTHORIZED},
+	 *         or {@link AuthErrorCode#FORBIDDEN}
+	 */
 	public ImmutablePair<Boolean, AuthErrorCode> isTokenValid(String jwtToken) {
-		return isTokenValid(JWT.decode(jwtToken));
+		try {
+			return isTokenValid(JWT.decode(jwtToken));
+		} catch (JWTDecodeException e) {
+			LOGGER.error("Malformed JWT: expected header.payload.signature");
+			return ImmutablePair.of(Boolean.FALSE, AuthErrorCode.INVALID_TOKEN);
+		}
 	}
 
+	/**
+	 * Validates a decoded JWT: expiry ({@link DateUtils2}), optional issuer host, JWKS
+	 * signature, and optional audience / AZP.
+	 *
+	 * @param decodedJWT decoded access or ID token
+	 * @return {@code (true, null)} if valid; otherwise {@code false} with an
+	 *         {@link AuthErrorCode}
+	 */
 	public ImmutablePair<Boolean, AuthErrorCode> isTokenValid(DecodedJWT decodedJWT) {
 		PublicKey publicKey = getPublicKey(decodedJWT);
 		// First, token expire
@@ -135,6 +207,13 @@ public class ValidateTokenUtil {
 		return ImmutablePair.of(Boolean.TRUE, null);
 	}
 
+	/**
+	 * Returns whether {@code aud} contains any {@link #allowedAudience} entry, or else
+	 * whether {@code azp} equals an allowed audience (case-insensitive).
+	 *
+	 * @param decodedJWT token whose audience claims are checked
+	 * @return {@code true} if audience or AZP is allowed
+	 */
 	private boolean validateAudience(DecodedJWT decodedJWT) {
 		boolean matchFound;
 
@@ -153,9 +232,12 @@ public class ValidateTokenUtil {
 	/**
 	 * This method validates if the issuer domain in the JWT matches the issuerURI
 	 * configured in the properties.
+	 * <p>
+	 * Compares the host of the {@code iss} claim with the host of {@link #certsPathUrl}.
 	 * 
-	 * @param decodedJWT
-	 * @return
+	 * @param decodedJWT token whose {@code iss} claim is parsed
+	 * @return {@code true} when both hosts match (case-insensitive); {@code false} on
+	 *         mismatch or {@link URISyntaxException}
 	 */
 	private boolean getTokenIssuerDomain(DecodedJWT decodedJWT) {
 		String domain = decodedJWT.getClaim(AuthConstant.ISSUER).asString();
@@ -168,6 +250,14 @@ public class ValidateTokenUtil {
 		return false;
 	}
 
+	/**
+	 * Returns the RSA public key for {@code decodedJWT}'s {@code kid}, downloading it
+	 * from JWKS on a cache miss.
+	 *
+	 * @param decodedJWT token whose {@code kid} header selects the JWK
+	 * @return cached or freshly downloaded {@link PublicKey}, or {@code null} if download
+	 *         fails
+	 */
 	public PublicKey getPublicKey(DecodedJWT decodedJWT) {
 		String userName = decodedJWT.getClaim(AuthConstant.PREFERRED_USERNAME).asString();
 		LOGGER.info("offline verification for environment profile. UserName: " + userName);
@@ -183,10 +273,14 @@ public class ValidateTokenUtil {
 	}
 	
 	/**
-	 * Verify the signature of the given JWT.
-	 * 
-	 * @param decodedJWT - the decoded JWT
-	 * @return if it is valid or not and any error code in case if it not valid.
+	 * Verifies the JWT signature with the JWKS public key for the token {@code kid}.
+	 * <p>
+	 * Selects RS256, RS384, or RS512 from the token {@code alg} (unknown algorithms use
+	 * RS256) and calls Auth0 {@link Algorithm#verify(DecodedJWT)}.
+	 *
+	 * @param decodedJWT decoded JWT whose signature is checked
+	 * @return {@code (true, null)} if the signature is valid; {@code (false,}
+	 *         {@link AuthErrorCode#UNAUTHORIZED}{@code )} on {@link SignatureVerificationException}
 	 */
 	public ImmutablePair<Boolean, AuthErrorCode> verifyJWTSignagure(DecodedJWT decodedJWT) {
 		try {
@@ -204,6 +298,13 @@ public class ValidateTokenUtil {
 
 	}
 
+	/**
+	 * Downloads the JWK for {@code keyId} from {@link #certsPathUrl} via
+	 * {@link UrlJwkProvider}.
+	 *
+	 * @param keyId JWT {@code kid} header
+	 * @return public key from the JWK, or {@code null} on JWKS / URL errors
+	 */
 	private PublicKey getIssuerPublicKey(String keyId) {
 		try {
 
@@ -217,6 +318,13 @@ public class ValidateTokenUtil {
 		return null;
 	}
 
+	/**
+	 * Maps the JWT {@code alg} to an Auth0 RSA verifier. Unknown algorithms use RS256.
+	 *
+	 * @param tokenAlgo JWT {@code alg} ({@code RS256}, {@code RS384}, or {@code RS512})
+	 * @param publicKey RSA public key from JWKS
+	 * @return Auth0 {@link Algorithm} used to verify the signature
+	 */
 	private Algorithm getVerificationAlgorithm(String tokenAlgo, PublicKey publicKey) {
 		// Later will add other Algorithms.
 		switch (tokenAlgo) {

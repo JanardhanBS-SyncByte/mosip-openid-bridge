@@ -23,29 +23,71 @@ import io.mosip.kernel.auth.defaultadapter.helper.TokenValidationHelper;
 import io.mosip.kernel.auth.defaultadapter.model.TokenHolder;
 
 /**
- * This class intercepts and renew client token.
- * 
- * @author Urvil Joshi
+ * {@link RestTemplate} interceptor that attaches the service's own
+ * client-credentials token and renews it after an HTTP 401.
+ * <p>
+ * Cookie replacement uses remove-then-add on {@code HttpHeaders} (Spring 6/7
+ * {@code HttpHeaders} no longer has a replace helper). The cached token is
+ * shared with {@link SelfTokenRenewalTaskExecutor}.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
  *
+ * @author Urvil Joshi
  */
 public class SelfTokenRestInterceptor implements ClientHttpRequestInterceptor {
 
+	/**
+	 * OIDC client id, resolved per {@code spring.application.name} with a global
+	 * fallback.
+	 */
 	private String clientID;
 
+	/**
+	 * OIDC client secret, resolved per application name with a global fallback.
+	 */
 	private String clientSecret;
 
+	/**
+	 * MOSIP application id used to look up the Keycloak realm.
+	 */
 	private String appID;
 
+	/**
+	 * Shared cache of the current client-credentials access token.
+	 */
 	private TokenHolder<String> cachedToken;
 
+	/**
+	 * Logger for token-fetch failures.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(SelfTokenRestInterceptor.class);
 
+	/**
+	 * RestTemplate used only to fetch and validate tokens (typically
+	 * {@code plainRestTemplate}).
+	 */
 	private RestTemplate restTemplate;
 	
+	/**
+	 * Obtains client-credentials tokens from the OIDC token endpoint.
+	 */
 	private TokenHelper tokenHelper;
 
+	/**
+	 * Online token validation used before renewing after HTTP 401.
+	 */
 	private TokenValidationHelper tokenValidationHelper;
 
+	/**
+	 * Loads client credentials for {@code applName} and stores collaborators.
+	 *
+	 * @param environment           Spring environment for property lookup
+	 * @param restTemplate          client used to request and validate tokens
+	 * @param cachedToken           shared token cache
+	 * @param tokenHelper           client-credentials token client
+	 * @param tokenValidationHelper online token validator
+	 * @param applName              first {@code spring.application.name} segment
+	 */
 	public SelfTokenRestInterceptor(Environment environment, RestTemplate restTemplate,
 			TokenHolder<String> cachedToken, TokenHelper tokenHelper, TokenValidationHelper tokenValidationHelper,
 			String applName) {
@@ -58,6 +100,16 @@ public class SelfTokenRestInterceptor implements ClientHttpRequestInterceptor {
 		this.tokenValidationHelper = tokenValidationHelper;
 	}
 
+	/**
+	 * Attaches {@code Cookie: Authorization=<cached token>}, executes the call,
+	 * and on HTTP 401 validates then renews the token and retries once.
+	 *
+	 * @param request   the outbound HTTP request
+	 * @param body      the request body
+	 * @param execution the remainder of the interceptor chain
+	 * @return the HTTP response (original or retry)
+	 * @throws IOException if the request fails to execute
+	 */
 	@Override
 	public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
 			throws IOException {
@@ -92,14 +144,22 @@ public class SelfTokenRestInterceptor implements ClientHttpRequestInterceptor {
 		if (cookies != null && !cookies.isEmpty()) {
 			cookies=cookies.stream().filter(str -> !str.contains(AuthAdapterConstant.AUTH_HEADER)).collect(Collectors.toList());
 		}
-		request.getHeaders().replace(AuthAdapterConstant.AUTH_HEADER_COOKIE, cookies);
+		request.getHeaders().remove(AuthAdapterConstant.AUTH_HEADER_COOKIE);
+		if (cookies != null && !cookies.isEmpty()) {
+			cookies.forEach(cookie -> request.getHeaders().add(AuthAdapterConstant.AUTH_HEADER_COOKIE, cookie));
+		}
 		request.getHeaders().add(AuthAdapterConstant.AUTH_HEADER_COOKIE,
 				AuthAdapterConstant.AUTH_HEADER + cachedToken.getToken());
 		return execution.execute(request, body);
 
 	}
 
-	// Updated to use common code to validate the token online.
+	/**
+	 * Returns whether online user-info validation still accepts {@code authToken}.
+	 *
+	 * @param authToken the cached access token
+	 * @return {@code true} if validation returned a user
+	 */
 	private boolean isTokenValid(String authToken) {
 		return Objects.nonNull(tokenValidationHelper.getOnlineTokenValidatedUserResponse(authToken, restTemplate));
 	}

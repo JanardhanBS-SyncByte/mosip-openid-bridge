@@ -4,6 +4,9 @@
 package io.mosip.kernel.auth.defaultimpl.constant;
 
 /**
+ * OTP send/validate error codes ({@code KER-SOT-*}) for channel registration
+ * and notification configuration failures.
+ *
  * @author Ramadurai Pandian
  *
  */

@@ -61,7 +61,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
 /**
- * Controller APIs for Authentication and Authorization
+ * Controller APIs for Authentication and Authorization.
+ * REST surface of authmanager on {@code /v1/authmanager} (port 8091).
+ * Delegates to {@link AuthService}; IAM is Keycloak.
  * 
  * @author Ramadurai Pandian
  * @since 1.0.0
@@ -72,14 +74,26 @@ import jakarta.validation.Valid;
 @Tag(name = "authmanager", description = "Operation related to Authentication and Authorization")
 public class AuthController {
 
+	/**
+	 * Logger for authentication request outcomes (user ids and token payload fragments).
+	 */
 	private static Logger LOGGER = LoggerFactory.getLogger(AuthController.class);
 
+	/**
+	 * When true, auth cookies are marked {@code Secure} ({@code mosip.security.secure-cookie}).
+	 */
 	@Value("${mosip.security.secure-cookie:false}")
 	private boolean isSecureCookie;
 
+	/**
+	 * Splitter token for auth-code URLs ({@code mosip.kernel.auth-code-url-splitter}).
+	 */
 	@Value("${mosip.kernel.auth-code-url-splitter:#URISPLITTER#}")
 	private String urlSplitter;
 
+	/**
+	 * Allowed redirect/host URLs from {@code auth.allowed.urls} (comma-separated).
+	 */
 	@Value("#{'${auth.allowed.urls}'.split(',')}")
 	private List<String> allowedUrls;
 
@@ -99,6 +113,13 @@ public class AuthController {
 	private AuthService authService;
 
 
+	/**
+	 * Builds an HttpOnly Authorization cookie with configured max-age and Secure flag.
+	 *
+	 * @param content               token value
+	 * @param expirationTimeSeconds cookie max-age
+	 * @return cookie named from {@link MosipEnvironment#getAuthTokenHeader()}
+	 */
 	private Cookie createCookie(final String content, final int expirationTimeSeconds) {
 		final Cookie cookie = new Cookie(mosipEnvironment.getAuthTokenHeader(), content);
 		cookie.setMaxAge(expirationTimeSeconds);
@@ -113,7 +134,9 @@ public class AuthController {
 	 * 
 	 * otpUser is of type {@link OtpUser}
 	 * 
+	 * @param otpUserDto wrapped OTP send request
 	 * @return ResponseEntity with OTP Sent message
+	 * @throws Exception if OTP send fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authenticate/sendotp")
@@ -147,7 +170,10 @@ public class AuthController {
 	 * 
 	 * userOtp is of type {@link UserOtp}
 	 * 
+	 * @param userOtpDto wrapped user id and OTP
+	 * @param res        used to set Authorization header and cookie
 	 * @return ResponseEntity with Cookie value with Auth token
+	 * @throws Exception if OTP validation fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authenticate/useridOTP")
@@ -191,7 +217,10 @@ public class AuthController {
 	 * 
 	 * clientSecretDto is of type {@link ClientSecretDto}
 	 * 
+	 * @param clientSecretDto wrapped client credentials
+	 * @param res             used to set Authorization header and cookie
 	 * @return ResponseEntity with Cookie value with Auth token
+	 * @throws Exception if client-secret authentication fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authenticate/clientidsecretkey")
@@ -229,7 +258,11 @@ public class AuthController {
 	 * API to validate token
 	 * 
 	 * 
+	 * @param request incoming request (Authorization cookie)
+	 * @param res     used to refresh the auth cookie
 	 * @return ResponseEntity with MosipUserDto
+	 * @throws AuthManagerException if cookie or token is missing
+	 * @throws Exception            if validation fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authorize/validateToken")
@@ -279,10 +312,12 @@ public class AuthController {
 	 * API to validate token
 	 * 
 	 * 
+	 * @param request incoming request (Authorization cookie)
+	 * @param res     used to refresh the auth cookie
 	 * @return ResponseEntity with MosipUserDto
-	 * @throws IOException
-	 * @throws JsonMappingException
-	 * @throws JsonParseException
+	 * @throws IOException          unused declared throw from historical signature
+	 * @throws JsonMappingException unused declared throw from historical signature
+	 * @throws JsonParseException   unused declared throw from historical signature
 	 */
 	@ResponseFilter
 	@GetMapping(value = "/authorize/admin/validateToken")
@@ -328,7 +363,12 @@ public class AuthController {
 	 * API to retry token when auth token expires
 	 * 
 	 * 
+	 * @param appId               MOSIP application id (realm mapping)
+	 * @param refreshTokenRequest refresh payload
+	 * @param request             must contain {@code refresh_token} cookie
+	 * @param res                 receives new access and refresh cookies
 	 * @return ResponseEntity with MosipUserDto
+	 * @throws Exception if refresh fails or cookie is missing
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authorize/refreshToken/{appid}")
@@ -370,7 +410,10 @@ public class AuthController {
 	 * API to invalidate token when both refresh and auth token expires
 	 * 
 	 * 
+	 * @param request incoming request (Authorization cookie)
+	 * @param res     servlet response (unused beyond signature)
 	 * @return ResponseEntity with MosipUserDto
+	 * @throws Exception if cookie/token is missing or invalidate fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authorize/invalidateToken")
@@ -406,6 +449,13 @@ public class AuthController {
 		return responseWrapper;
 	}
 
+	/**
+	 * Lists IAM roles for the realm mapped to {@code appId}.
+	 *
+	 * @param appId MOSIP application id
+	 * @return roles list
+	 * @throws Exception if IAM lookup fails
+	 */
 	@ResponseFilter
 	@GetMapping(value = "/roles/{appid}")
 	@Operation(summary = "API to get all roles", description = "API to get all roles", tags = { "authmanager" })
@@ -422,6 +472,14 @@ public class AuthController {
 		return responseWrapper;
 	}
 
+	/**
+	 * Loads user details for the given user ids in the realm mapped to {@code appId}.
+	 *
+	 * @param userDetails wrapped list of user ids
+	 * @param appId       MOSIP application id
+	 * @return MOSIP user list
+	 * @throws Exception if IAM lookup fails
+	 */
 	@ResponseFilter
 	@PostMapping(value = "/userdetails/{appid}")
 	@Operation(summary = "API to get list of users for a module", description = "API to get list of users for a module", tags = {
@@ -442,6 +500,14 @@ public class AuthController {
 		return responseWrapper;
 	}
 
+	/**
+	 * Loads users with salt metadata for the given user ids.
+	 *
+	 * @param userDetails wrapped list of user ids
+	 * @param appId       MOSIP application id
+	 * @return users with salts
+	 * @throws Exception if IAM lookup fails
+	 */
 	@ResponseFilter
 	@PostMapping(value = "/usersaltdetails/{appid}")
 	@Operation(summary = "API to get list of users for a module with salt", description = "API to get list of users for a module with salt", tags = {
@@ -490,9 +556,9 @@ public class AuthController {
 
 	/**
 	 * 
-	 * @param req - {@link HttpServletRequest}
-	 * @param res - {@link HttpServletResponse}
-	 * @return {@link ResponseWrapper}
+	 * @param token Authorization cookie value (optional)
+	 * @param res   servlet response (unused beyond signature)
+	 * @return {@link ResponseWrapper} logout status
 	 */
 	@ResponseFilter
 	@DeleteMapping(value = "/logout/user")
@@ -525,10 +591,10 @@ public class AuthController {
 	/**
 	 * Internal API used by syncdata delegate API
 	 * 
-	 * @param request
-	 * @param res
-	 * @return
-	 * @throws Exception
+	 * @param request wrapped username/password with client id
+	 * @param res     servlet response (unused beyond signature)
+	 * @return authentication result including tokens
+	 * @throws Exception if authentication fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authenticate/internal/useridPwd")
@@ -551,10 +617,10 @@ public class AuthController {
 	/**
 	 * Internal API used by syncdata delegate API
 	 * 
-	 * @param request
-	 * @param res
-	 * @return
-	 * @throws Exception
+	 * @param request wrapped user OTP
+	 * @param res     servlet response (unused beyond signature)
+	 * @return authentication result including tokens
+	 * @throws Exception if OTP authentication fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authenticate/internal/userotp")
@@ -576,12 +642,12 @@ public class AuthController {
 	/**
 	 * Internal API used by syncdata delegate API
 	 * 
-	 * @param appId
-	 * @param refreshTokenRequest
-	 * @param request
-	 * @param res
-	 * @return
-	 * @throws Exception
+	 * @param appId               MOSIP application id
+	 * @param refreshTokenRequest refresh payload
+	 * @param request             must contain {@code refresh_token} cookie
+	 * @param res                 servlet response (unused beyond signature)
+	 * @return access and refresh tokens with expiry
+	 * @throws Exception if refresh fails
 	 */
 	@ResponseFilter
 	@PostMapping(value = "/authorize/internal/refreshToken/{appid}")
@@ -645,10 +711,17 @@ public class AuthController {
 	 * only pagination will work. with out role can be searched by all.
 	 * email,firstName,lastName and userName
 	 * 
-	 * @param appId
-	 * @param roleName
-	 * @return
-	 * @throws Exception
+	 * @param appId     MOSIP application id
+	 * @param roleName  optional role filter
+	 * @param pageStart pagination offset
+	 * @param pageFetch page size
+	 * @param email     optional email filter
+	 * @param firstName optional first name filter
+	 * @param lastName  optional last name filter
+	 * @param userName  optional username filter
+	 * @param search    optional free-text search
+	 * @return matching users
+	 * @throws Exception if IAM search fails
 	 */
 	@ResponseFilter
 	@GetMapping(value = "/userdetails/{appid}")

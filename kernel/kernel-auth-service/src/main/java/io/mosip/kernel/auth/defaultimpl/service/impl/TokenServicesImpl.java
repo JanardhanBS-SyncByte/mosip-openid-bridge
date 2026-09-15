@@ -33,39 +33,92 @@ import io.mosip.kernel.auth.defaultimpl.service.TokenService;
 @Repository
 public class TokenServicesImpl implements TokenService {
 
+	/**
+	 * Insert SQL for {@code iam.oauth_access_token}.
+	 */
 	public static final String INSERT_TOKEN = "insert into iam.oauth_access_token(user_id,auth_token,refresh_token,expiration_time,cr_dtimes,is_active,cr_by) values(:userName,:token,:refreshToken,:expTime,:crdTimes,true,'Admin')";
 
+	/**
+	 * Select by access token value.
+	 */
 	public static final String SELECT_TOKEN = "select user_id,auth_token,refresh_token,expiration_time from iam.oauth_access_token where auth_token like :token ";
 
+	/**
+	 * Update all token fields for a user id.
+	 */
 	public static final String UPDATE_TOKEN = "update iam.oauth_access_token set user_id=:userName,auth_token=:token,refresh_token=:refreshToken,expiration_time=:expTime,cr_dtimes=:crdTimes "
 			+ " where user_id = :userName";
 
+	/**
+	 * Existence check by user id.
+	 */
 	public static final String CHECK_USER = "select user_id from iam.oauth_access_token where user_id like :userName";
 
+	/**
+	 * Update access token and expiry for a user.
+	 */
 	public static final String UPDATE_NEW_TOKEN = "update iam.oauth_access_token set auth_token=:token,expiration_time=:expTime where user_id like :userName ";
 
+	/**
+	 * Select by user id.
+	 */
 	public static final String SELECT_TOKEN_NAME = "select user_id,auth_token,refresh_token,expiration_time from iam.oauth_access_token where user_id like :userName ";
 
+	/**
+	 * Delete stored tokens for a user (used on revoke).
+	 */
 	public static final String DELETE_ACCESS_TOKEN = "delete from iam.oauth_access_token where user_id like :userName";
 
+	/**
+	 * Unused delete of refresh rows; same table as access-token delete.
+	 */
 	public static final String DELETE_REFRESH_TOKEN = "delete from iam.oauth_access_token where user_id like :userName";
 
+	/**
+	 * Bound insert statement.
+	 */
 	private final String insertTokenSQL = INSERT_TOKEN;
 
+	/**
+	 * Bound select-by-token statement.
+	 */
 	private final String selectTokenSQL = SELECT_TOKEN;
 
+	/**
+	 * Bound update-all statement.
+	 */
 	private final String updateTokenSQL = UPDATE_TOKEN;
 
+	/**
+	 * Bound user-existence statement.
+	 */
 	private final String checkUserTokenSQL = CHECK_USER;
 
+	/**
+	 * Bound access-token update statement.
+	 */
 	private final String updateNewTokenSQL = UPDATE_NEW_TOKEN;
 
+	/**
+	 * Bound select-by-user statement.
+	 */
 	private final String selectTokenFromName = SELECT_TOKEN_NAME;
 
+	/**
+	 * Bound delete statement.
+	 */
 	private final String deleteAccessToken = DELETE_ACCESS_TOKEN;
 
+	/**
+	 * Named-parameter JDBC template over the authmanager datasource.
+	 */
 	private final NamedParameterJdbcTemplate jdbcTemplate;
 
+	/**
+	 * Builds a named-parameter JDBC template from the injected datasource.
+	 *
+	 * @param datasource JDBC datasource for {@code iam.oauth_access_token}
+	 */
 	@Autowired
 	public TokenServicesImpl(DataSource datasource) {
 		this.jdbcTemplate = new NamedParameterJdbcTemplate(datasource);
@@ -92,6 +145,11 @@ public class TokenServicesImpl implements TokenService {
 		}
 	}
 
+	/**
+	 * Updates stored tokens when the user already has a row.
+	 *
+	 * @param token replacement token fields
+	 */
 	@Override
 	public void UpdateToken(AuthToken token) {
 		String userName = checkUser(token.getUserId());
@@ -103,6 +161,12 @@ public class TokenServicesImpl implements TokenService {
 		}
 	}
 
+	/**
+	 * Returns the user id if a token row already exists.
+	 *
+	 * @param userId user id to look up
+	 * @return user id from the table, or {@code null} if none
+	 */
 	private String checkUser(String userId) {
 		return jdbcTemplate.query(checkUserTokenSQL, new MapSqlParameterSource().addValue("userName", userId),
 				new ResultSetExtractor<String>() {
@@ -120,6 +184,12 @@ public class TokenServicesImpl implements TokenService {
 				});
 	}
 
+	/**
+	 * Loads a stored token by access-token value.
+	 *
+	 * @param token access token string
+	 * @return stored token, or {@code null} if missing
+	 */
 	@Override
 	public AuthToken getTokenDetails(String token) {
 
@@ -142,6 +212,14 @@ public class TokenServicesImpl implements TokenService {
 				});
 	}
 
+	/**
+	 * Writes a new access token for {@code userName} and returns the updated row.
+	 *
+	 * @param token          existing access token (unused except as method contract)
+	 * @param newAccessToken replacement token and expiry
+	 * @param userName       user id
+	 * @return updated stored token
+	 */
 	@Override
 	@Transactional
 	public AuthToken getUpdatedAccessToken(String token, TimeToken newAccessToken, String userName) {
@@ -151,6 +229,12 @@ public class TokenServicesImpl implements TokenService {
 		return getTokenBasedOnName(userName);
 	}
 
+	/**
+	 * Loads a stored token by user name.
+	 *
+	 * @param userName user id
+	 * @return stored token, or {@code null} if missing
+	 */
 	@Override
 	public AuthToken getTokenBasedOnName(String userName) {
 		return jdbcTemplate.query(selectTokenFromName,
@@ -172,6 +256,11 @@ public class TokenServicesImpl implements TokenService {
 				});
 	}
 
+	/**
+	 * Deletes the stored token for the user owning {@code token}.
+	 *
+	 * @param token access token to revoke
+	 */
 	@Override
 	public void revokeToken(String token) {
 		AuthToken authToken = getTokenDetails(token);
@@ -183,6 +272,11 @@ public class TokenServicesImpl implements TokenService {
 		}
 	}
 
+	/**
+	 * Deletes all {@code iam.oauth_access_token} rows for the user.
+	 *
+	 * @param userId user id
+	 */
 	private void removeAccessToken(String userId) {
 		jdbcTemplate.update(deleteAccessToken, new MapSqlParameterSource().addValue("userName", userId));
 

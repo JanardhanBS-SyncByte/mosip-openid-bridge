@@ -4,8 +4,6 @@
 package io.mosip.kernel.auth.defaultadapter.filter;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -28,7 +26,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.authentication.AbstractAuthenticationProcessingFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.ContentCachingRequestWrapper;
@@ -41,6 +38,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 
 import io.mosip.kernel.auth.defaultadapter.config.NoAuthenticationEndPoint;
+import io.mosip.kernel.auth.defaultadapter.config.PathPatternSupport;
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterConstant;
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterErrorCode;
 import io.mosip.kernel.auth.defaultadapter.exception.AuthManagerException;
@@ -49,6 +47,7 @@ import io.mosip.kernel.core.exception.ExceptionUtils;
 import io.mosip.kernel.core.exception.ServiceError;
 import io.mosip.kernel.core.http.RequestWrapper;
 import io.mosip.kernel.core.http.ResponseWrapper;
+import io.mosip.kernel.core.util.DateUtils2;
 import io.mosip.kernel.core.util.EmptyCheckUtils;
 import io.mosip.kernel.openid.bridge.api.constants.Constants;
 import io.mosip.kernel.openid.bridge.api.constants.Errors;
@@ -61,41 +60,97 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
+ * Servlet authentication filter that extracts JWTs from cookies, skips
+ * configured no-auth PathPatterns, and delegates to the authentication manager.
+ * <p>
+ * No-auth matching uses {@link PathPatternSupport} (Spring Security 7
+ * {@code PathPatternRequestMatcher}), not Ant. After success, the filter chain
+ * continues. Compliance Toolkit data-share token handling is an optional
+ * fail-safe behind {@code auth.handle.ctk.flow}.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
+ *
  * @author Ramadurai Saravana Pandian
  * @author Raj Jha
  * @author Urvil Joshi
  * @author GOVINDARAJ VELU -> End-points modification
- *
  */
 public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 
+	/**
+	 * Logger for token extraction and authentication failures.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(AuthFilter.class);
 
+	/**
+	 * Bound global and service no-auth path lists.
+	 */
 	private NoAuthenticationEndPoint noAuthenticationEndPoint;
 
+	/**
+	 * Mapper used to serialize MOSIP error envelopes and parse cached request JSON.
+	 */
 	private ObjectMapper mapper;
+	/**
+	 * HTTP methods allowed to skip auth on service-specific no-auth paths
+	 * (default GET).
+	 */
 	private List<String> allowedHttpMethods;
 
+	/**
+	 * When {@code true}, the id-token cookie must be present and its {@code sub}
+	 * must match the access token.
+	 */
 	@Value("${auth.validate.id-token:false}")
 	private boolean validateIdToken;
 	
+	/**
+	 * When {@code true}, successful auth may call Compliance Toolkit data-share
+	 * token APIs.
+	 */
 	@Value("${auth.handle.ctk.flow:false}")
 	private boolean flagToHandleCtkFlow;
 	
+	/**
+	 * Compliance Toolkit URL that stores a data-share token.
+	 */
 	@Value("${mosip.compliance.toolkit.saveDataShareToken.url:}")
 	private String ctkSaveUrl;
 	
+	/**
+	 * Compliance Toolkit URL that invalidates a data-share token.
+	 */
 	@Value("${mosip.compliance.toolkit.invalidateDataShareToken.url:}")
 	private String ctkInvalidateUrl;
 	
+	/**
+	 * Test-case id that selects {@link #ctkInvalidateUrl} instead of
+	 * {@link #ctkSaveUrl}.
+	 */
 	@Value("${mosip.compliance.toolkit.invalidateDataShareToken.testCaseId:}")
 	private String ctkInvalidateTestCaseId;
 	
+	/**
+	 * Environment used to resolve the id-token cookie name and JWT subject claim.
+	 */
 	@Autowired
 	private Environment environment;
 	
+	/**
+	 * RestTemplate used only for optional Compliance Toolkit HTTP calls.
+	 */
 	private RestTemplate restTemplate = new RestTemplate();
 
+	/**
+	 * Builds the filter for {@code requiresAuthenticationRequestMatcher} and loads
+	 * allowed no-auth HTTP methods for the hosting application.
+	 *
+	 * @param requiresAuthenticationRequestMatcher typically
+	 *                                             {@code AnyRequestMatcher.INSTANCE}
+	 * @param noAuthenticationEndPoint             configured no-auth paths
+	 * @param environment                          used for application name and
+	 *                                             method exclusions
+	 */
 	@SuppressWarnings("unchecked")
 	public AuthFilter(RequestMatcher requiresAuthenticationRequestMatcher,
 			NoAuthenticationEndPoint noAuthenticationEndPoint, Environment environment) {
@@ -109,6 +164,15 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		mapper.registerModule(new JavaTimeModule());
 	}
 
+	/**
+	 * Returns {@code false} (skip authentication) for global PathPatterns, or for
+	 * service PathPatterns when the servlet context matches and the HTTP method is
+	 * allowed.
+	 *
+	 * @param request  the inbound request
+	 * @param response the outbound response
+	 * @return {@code true} if the authentication manager must run
+	 */
 	@Override
 	protected boolean requiresAuthentication(HttpServletRequest request, HttpServletResponse response) {
 		// To check the global end-points
@@ -128,11 +192,28 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		return true;
 	}
 
+	/**
+	 * Returns whether any configured Ant-style pattern matches {@code request}
+	 * after {@link PathPatternSupport} conversion.
+	 *
+	 * @param request   the inbound request
+	 * @param endPoints configured patterns, possibly {@code null} or empty
+	 * @return {@code true} if at least one pattern matches
+	 */
 	private boolean isPresent(HttpServletRequest request, List<String> endPoints) {
-		return endPoints.stream().filter(pattern -> new AntPathRequestMatcher(pattern).matches(request)).findFirst()
-				.isPresent();
+		if (endPoints == null || endPoints.isEmpty()) {
+			return false;
+		}
+		return endPoints.stream().anyMatch(pattern -> PathPatternSupport.matches(request, pattern));
 	}
 
+	/**
+	 * Returns whether service-level no-auth configuration has a context path and
+	 * endpoint list.
+	 *
+	 * @param noAuthenticationEndPoint the bound no-auth properties
+	 * @return {@code true} if service exclusions can be evaluated
+	 */
 	private boolean isValid(NoAuthenticationEndPoint noAuthenticationEndPoint) {
 		if (noAuthenticationEndPoint.getServiceContext() == null
 				|| noAuthenticationEndPoint.getServiceContext().isEmpty())
@@ -144,6 +225,17 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		return true;
 	}
 
+	/**
+	 * Reads Authorization (and optional id-token) cookies, optionally checks
+	 * subject claims, and authenticates an {@link AuthToken}.
+	 *
+	 * @param httpServletRequest  the inbound request
+	 * @param httpServletResponse the outbound response used for 401 JSON
+	 * @return the authenticated token, or {@code null} after writing 401
+	 * @throws AuthenticationException if the authentication manager fails
+	 * @throws IOException             if the error body cannot be written
+	 * @throws ServletException        if authentication processing fails
+	 */
 	@Override
 	public Authentication attemptAuthentication(HttpServletRequest httpServletRequest,
 			HttpServletResponse httpServletResponse)
@@ -233,6 +325,14 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		return auth;
 	}
 
+	/**
+	 * Writes HTTP 401 MOSIP JSON and returns {@code null}.
+	 *
+	 * @param httpServletRequest  the failed request
+	 * @param httpServletResponse the response
+	 * @return always {@code null}
+	 * @throws IOException if the body cannot be written
+	 */
 	private Authentication sendAuthenticationFailure(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse) throws IOException {
 		ResponseWrapper<ServiceError> errorResponse = setErrors(httpServletRequest);
 		ServiceError error = new ServiceError(AuthAdapterErrorCode.UNAUTHORIZED.getErrorCode(),
@@ -245,6 +345,16 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		return null;
 	}
 	
+	/**
+	 * Invokes the default success handling then continues the filter chain.
+	 *
+	 * @param request    the authenticated request
+	 * @param response   the response
+	 * @param chain      the remaining filters
+	 * @param authResult the successful authentication
+	 * @throws IOException      if the chain throws
+	 * @throws ServletException if the chain throws
+	 */
 	@Override
 	protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain,
 			Authentication authResult) throws IOException, ServletException {
@@ -252,13 +362,31 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		chain.doFilter(request, response);
 	}
 
+	/**
+	 * Writes HTTP 401 MOSIP JSON from {@link AuthManagerException} errors.
+	 *
+	 * @param request  the failed request
+	 * @param response the response
+	 * Writes HTTP 401 MOSIP JSON for any authentication failure. Malformed JWTs
+	 * are wrapped as {@link AuthManagerException} or
+	 * {@link org.springframework.security.authentication.InternalAuthenticationServiceException};
+	 * both must stay 401 (not a ClassCastException 500).
+	 *
+	 * @param request  the failed request
+	 * @param response the response
+	 * @param failed   authentication failure
+	 * @throws IOException      if the body cannot be written
+	 * @throws ServletException never thrown by this implementation
+	 */
 	@Override
 	protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response,
 			AuthenticationException failed) throws IOException, ServletException {
-		AuthManagerException exception = (AuthManagerException) failed;
 		ResponseWrapper<ServiceError> errorResponse = setErrors(request);
-		if (exception.getList().size() != 0) {
+		if (failed instanceof AuthManagerException exception && exception.getList() != null
+				&& !exception.getList().isEmpty()) {
 			errorResponse.getErrors().addAll(exception.getList());
+		} else if (failed instanceof AuthManagerException exception && exception.getErrorCode() != null) {
+			errorResponse.getErrors().add(new ServiceError(exception.getErrorCode(), exception.getMessage()));
 		} else {
 			ServiceError error = new ServiceError(AuthAdapterErrorCode.UNAUTHORIZED.getErrorCode(),
 					"Authentication Failed");
@@ -271,9 +399,17 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		response.getWriter().write(convertObjectToJson(errorResponse));
 	}
 
+	/**
+	 * Builds a {@link ResponseWrapper} with UTC time ({@link DateUtils2}) and copies
+	 * {@code id} and {@code version} from a cached JSON body when present.
+	 *
+	 * @param httpServletRequest the inbound request
+	 * @return an error wrapper ready for {@link ServiceError} entries
+	 * @throws IOException if the cached body is not valid JSON
+	 */
 	private ResponseWrapper<ServiceError> setErrors(HttpServletRequest httpServletRequest) throws IOException {
 		ResponseWrapper<ServiceError> responseWrapper = new ResponseWrapper<>();
-		responseWrapper.setResponsetime(LocalDateTime.now(ZoneId.of("UTC")));
+		responseWrapper.setResponsetime(DateUtils2.getUTCCurrentDateTime());
 		String requestBody = null;
 		if (httpServletRequest instanceof ContentCachingRequestWrapper) {
 			requestBody = new String(((ContentCachingRequestWrapper) httpServletRequest).getContentAsByteArray());
@@ -288,6 +424,14 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		return responseWrapper;
 	}
 
+	/**
+	 * Serializes {@code object} to JSON, or returns {@code null} if {@code object}
+	 * is {@code null}.
+	 *
+	 * @param object the value to serialize
+	 * @return JSON text, or {@code null}
+	 * @throws JsonProcessingException if serialization fails
+	 */
 	private String convertObjectToJson(Object object) throws JsonProcessingException {
 		if (object == null) {
 			return null;
@@ -296,6 +440,13 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		return mapper.writeValueAsString(object);
 	}
 
+	/**
+	 * Returns the first comma-separated {@code spring.application.name} value.
+	 *
+	 * @param environment Spring environment
+	 * @return the hosting application name
+	 * @throws RuntimeException if the property is missing or blank
+	 */
 	@SuppressWarnings("java:S2259") // added suppress for sonarcloud. Null check is performed at line # 211
 	private String getApplicationName(Environment environment) {
 		String appNames = environment.getProperty("spring.application.name");
@@ -310,6 +461,9 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 	/**
 	 * This is custom fail-safe handling added only for Compliance Toolkit, to
 	 * enable ABIS data share testing.
+	 *
+	 * @param httpServletRequest the authenticated request
+	 * @param token              the access token forwarded to Compliance Toolkit
 	 */
 	private void handleCtkTokenFlow(HttpServletRequest httpServletRequest, String token) {
 		String ctkTestCaseId = null;
@@ -358,7 +512,7 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 			RequestWrapper<Object> requestWrapper = new RequestWrapper<>();
 			requestWrapper.setId("mosip.toolkit.abis.datashare.token");
 			requestWrapper.setVersion("1.0");
-			requestWrapper.setRequesttime(LocalDateTime.now());
+			requestWrapper.setRequesttime(DateUtils2.getUTCCurrentDateTime());
 			requestWrapper.setRequest(valueMap);
 			
 			ResponseEntity<ResponseWrapper<String>> responseEntity = null;
@@ -385,9 +539,13 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		}
 	}
 
+	/**
+	 * Replaces CR/LF in log arguments to avoid log injection.
+	 *
+	 * @param msg raw log fragment
+	 * @return {@code msg} with newlines replaced by spaces
+	 */
 	private String sanitize(String msg) {
 		return msg.replaceAll("[\n\r]", " ");
 	}
-
-
 }

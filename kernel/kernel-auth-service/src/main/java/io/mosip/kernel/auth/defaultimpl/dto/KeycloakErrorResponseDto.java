@@ -3,16 +3,21 @@ package io.mosip.kernel.auth.defaultimpl.dto;
 import lombok.Data;
 
 /**
- * Instantiates a new keycloak error response dto.
- * 
+ * Keycloak token or admin API error JSON ({@code error} and {@code error_description}).
+ * Field {@link #error_description} keeps the Keycloak snake_case name for Jackson mapping.
+ *
  * @author srinivasan
  */
 @Data
 public class KeycloakErrorResponseDto {
 
-	/** The error. */
+	/**
+	 * Short Keycloak error code, for example {@code invalid_grant} or {@code unauthorized_client}.
+	 */
 	private String error;
 
-	/** The error description. */
+	/**
+	 * Human-readable Keycloak error description from the JSON field {@code error_description}.
+	 */
 	private String error_description;
 }

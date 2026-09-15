@@ -26,19 +26,53 @@ import io.mosip.kernel.core.exception.ExceptionUtils;
 import io.mosip.kernel.openid.bridge.model.AuthUserDetails;
 import io.mosip.kernel.openid.bridge.model.MosipUserDto;
 
+/**
+ * Optional authentication provider that validates a locally signed JWT with
+ * {@code prereg.auth.jwt.secret} (pre-registration flow).
+ * <p>
+ * Register this bean name via
+ * {@code mosip.security.authentication.provider.beans.list.<app>} so
+ * {@link io.mosip.kernel.auth.defaultadapter.config.SecurityConfig} includes
+ * it in the {@code ProviderManager}.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
+ */
 @Component("customJWTAuthProvider")
 public class CustomJWTAuthHandler extends AbstractUserDetailsAuthenticationProvider {
 
+	/**
+	 * Logger for token parse failures.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(CustomJWTAuthHandler.class);
 
+	/**
+	 * Base64-encoded HMAC secret used to verify the pre-registration JWT.
+	 */
 	@Value("${prereg.auth.jwt.secret:}")
 	private String jwtSecret;
 
+	/**
+	 * No extra checks; token validity is established in {@link #retrieveUser}.
+	 *
+	 * @param userDetails                         unused
+	 * @param usernamePasswordAuthenticationToken unused
+	 * @throws AuthenticationException never thrown by this implementation
+	 */
 	@Override
 	protected void additionalAuthenticationChecks(UserDetails userDetails,
 			UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken) throws AuthenticationException {
 	}
 
+	/**
+	 * Parses the {@link AuthToken} JWT with {@link #jwtSecret} and maps
+	 * {@code userId}, {@code user_name}, and {@code roles} claims to
+	 * {@link AuthUserDetails}.
+	 *
+	 * @param userName                            unused (user comes from claims)
+	 * @param usernamePasswordAuthenticationToken must be an {@link AuthToken}
+	 * @return authenticated user details
+	 * @throws AuthenticationException if the signature or JWT is invalid
+	 */
 	@Override
 	protected UserDetails retrieveUser(String userName,
 			UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken) throws AuthenticationException {
@@ -54,8 +88,8 @@ public class CustomJWTAuthHandler extends AbstractUserDetailsAuthenticationProvi
 			mosipUserDto.setRole(clamis.getBody().get("roles").toString());
 		} catch (SignatureException | IllegalArgumentException ex) {
 			LOGGER.error("validate token exception {}", ExceptionUtils.getStackTrace(ex));
-			throw new AuthManagerException(AuthAdapterErrorCode.UNAUTHORIZED.getErrorCode(), 
-                            AuthAdapterErrorCode.UNAUTHORIZED.getErrorMessage());
+			throw new AuthManagerException(AuthAdapterErrorCode.INVALID_TOKEN.getErrorCode(),
+                            AuthAdapterErrorCode.INVALID_TOKEN.getErrorMessage());
 		} catch (JwtException e) {
 			LOGGER.error("exception while parsing the token {}", ExceptionUtils.getStackTrace(e));
 			throw new AuthManagerException(AuthAdapterErrorCode.UNAUTHORIZED.getErrorCode(), 
@@ -72,4 +106,3 @@ public class CustomJWTAuthHandler extends AbstractUserDetailsAuthenticationProvi
 		return authUserDetails;
 	}
 }
-

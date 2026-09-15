@@ -1,4 +1,5 @@
 package io.mosip.kernel.auth.config;
+
 import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -6,35 +7,95 @@ import org.springframework.context.annotation.Configuration;
 
 import lombok.Data;
 
+/**
+ * Binds {@code openapi.*} Spring properties used to populate the Springdoc
+ * OpenAPI info block and server list for auth-manager.
+ */
 @Configuration
 @ConfigurationProperties(prefix = "openapi")
 @Data
 public class OpenApiProperties {
-    private InfoProperty info;
-    private Service service;
 
-    @Data
-    public static class InfoProperty {
-        private String title;
-        private String description;
-        private String version;
-        private LicenseProperty license;
-    }
+	/**
+	 * API title, description, version, and license metadata.
+	 */
+	private InfoProperty info;
 
-    @Data
-    public static class LicenseProperty {
-        private String name;
-        private String url;
-    }
+	/**
+	 * Server URLs advertised in the OpenAPI document.
+	 */
+	private Service service;
 
-    @Data
-    public static class Service {
-        private List<Server> servers;
-    }
+	/**
+	 * OpenAPI {@code info} object: title, description, version, and license.
+	 */
+	@Data
+	public static class InfoProperty {
 
-    @Data
-    public static class Server {
-        private String description;
-        private String url;
-    }
+		/**
+		 * OpenAPI info title.
+		 */
+		private String title;
+
+		/**
+		 * OpenAPI info description.
+		 */
+		private String description;
+
+		/**
+		 * OpenAPI info version string.
+		 */
+		private String version;
+
+		/**
+		 * Optional license name and URL.
+		 */
+		private LicenseProperty license;
+	}
+
+	/**
+	 * OpenAPI license name and URL under {@code info.license}.
+	 */
+	@Data
+	public static class LicenseProperty {
+
+		/**
+		 * License display name.
+		 */
+		private String name;
+
+		/**
+		 * License document URL.
+		 */
+		private String url;
+	}
+
+	/**
+	 * OpenAPI {@code servers} list wrapper bound from {@code openapi.service}.
+	 */
+	@Data
+	public static class Service {
+
+		/**
+		 * Server entries (description plus URL) published in the OpenAPI document.
+		 */
+		private List<Server> servers;
+	}
+
+	/**
+	 * A single OpenAPI server object.
+	 */
+	@Data
+	public static class Server {
+
+		/**
+		 * Human-readable server description.
+		 */
+		private String description;
+
+		/**
+		 * Server base URL.
+		 */
+		private String url;
+	}
 }

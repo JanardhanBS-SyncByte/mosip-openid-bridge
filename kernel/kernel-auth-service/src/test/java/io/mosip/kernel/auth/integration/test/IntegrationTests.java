@@ -24,9 +24,9 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -62,14 +62,25 @@ import io.mosip.kernel.core.authmanager.model.UserOtp;
 import io.mosip.kernel.core.http.RequestWrapper;
 import io.mosip.kernel.core.http.ResponseWrapper;
 
+/**
+ * MockMvc integration tests for auth-manager send-OTP, userid+OTP, validate
+ * token, logout, and refresh-token HTTP APIs with RestTemplate collaborators
+ * mocked.
+ * <p>
+ * Uses Boot 4 {@link AutoConfigureMockMvc} from
+ * {@code org.springframework.boot.webmvc.test.autoconfigure} and
+ * {@link MockitoBean} for auth and Keycloak RestTemplates.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 @AutoConfigureMockMvc
 public class IntegrationTests {
 
+	/** Keycloak OpenID base URL from test properties. */
 	@Value("${mosip.iam.open-id-url}")
 	private String keycloakOpenIdUrl;
 
+	/** Keycloak realm operations base URL from test properties. */
 	@Value("${mosip.iam.realm.operations.base-url}")
 	private String keycloakBaseUrl;
 
@@ -77,52 +88,73 @@ public class IntegrationTests {
 	 * @Autowired UserStoreFactory userStoreFactory;
 	 */
 
+	/** Keycloak IAM repository from the test context. */
 	@Autowired
 	KeycloakImpl keycloakImpl;
 
+	/** Token generator from the test context. */
 	@Autowired
 	TokenGenerator tokenGenerator;
 
+	/** Token validator from the test context. */
 	@Autowired
 	TokenValidator tokenValidator;
 
+	/** Custom token store from the test context. */
 	@Autowired
 	TokenService customTokenServices;
 
+	/** OTP service from the test context. */
 	@Autowired
 	OTPService oTPService;
 
+	/** UIN service from the test context. */
 	@Autowired
 	UinService uinService;
 
+	/** Auth RestTemplate replaced with a Mockito bean. */
 	@Qualifier("authRestTemplate")
-	@MockBean
+	@MockitoBean
 	RestTemplate authRestTemplate;
 
+	/** Keycloak RestTemplate replaced with a Mockito bean. */
 	@Qualifier("keycloakRestTemplate")
-	@MockBean
+	@MockitoBean
 	private RestTemplate keycloakRestTemplate;
 
+	/** Keycloak base URL from test properties. */
 	@Value("${mosip.iam.base-url}")
 	private String keycloakBaseURL;
 
-	@MockBean
+	/** Template util replaced with a Mockito bean. */
+	@MockitoBean
 	private TemplateUtil templateUtil;
 
+	/** MOSIP environment URLs from the test context. */
 	@Autowired
 	MosipEnvironment mosipEnvironment;
 
+	/** MockMvc for HTTP calls against auth-manager. */
 	@Autowired
 	private MockMvc mockMvc;
 
+	/** JSON mapper used to serialize request wrappers. */
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	/**
+	 * Placeholder setup; no initialization is required.
+	 */
 	@Before
 	public void init() {
 
 	}
 
+	/**
+	 * Asserts send-OTP for UIN over phone returns success via MockMvc.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	@Test
 	public void sendOTPUINPhoneTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
@@ -138,7 +170,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -182,6 +214,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts send-OTP for UIN over email returns success via MockMvc.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -196,7 +233,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -247,6 +284,11 @@ public class IntegrationTests {
 	
 	
 	@Test
+	/**
+	 * Asserts send-OTP for UIN maps AuthZ errors from the email channel.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailAuthZEmailTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -261,7 +303,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -315,6 +357,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts send-OTP for UIN maps a plain AuthZ body on the email channel.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailAuthZPlainRespEmailTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -329,7 +376,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -382,6 +429,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts send-OTP for UIN maps AuthN errors from the email channel.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailAuthNEmailTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -396,7 +448,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -450,6 +502,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts send-OTP for UIN maps a plain AuthN body on the email channel.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailAuthNPlainRespEmailTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -464,7 +521,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -517,6 +574,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts send-OTP for UIN maps AuthManagerServiceException from email.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailAuthServiceEmailTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -531,7 +593,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -585,6 +647,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts send-OTP for UIN maps a plain service-error body on email.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailAuthServiceEmailPlainRespTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -599,7 +666,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -652,6 +719,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts send-OTP for UIN over email and phone returns success.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPUINEmailPhoneTest() throws Exception {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -666,7 +738,7 @@ public class IntegrationTests {
 		// uin
 		Map<String, String> uriParams = new HashMap<String, String>();
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), "112211");
-		String uinEntityURL = UriComponentsBuilder.fromHttpUrl(mosipEnvironment.getUinGetDetailsUrl())
+		String uinEntityURL = UriComponentsBuilder.fromUriString(mosipEnvironment.getUinGetDetailsUrl())
 				.buildAndExpand(uriParams).toUriString();
 		ResponseWrapper<ResponseDTO> repw = new ResponseWrapper<>();
 		ResponseDTO uinResDTO = new ResponseDTO();
@@ -729,6 +801,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts send-OTP for a userid over email returns success via MockMvc.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPEmailTest() throws Exception {
 		// is user already present
 		Map<String, String> registerPathParams = new HashMap<>();
@@ -803,6 +880,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts send-OTP for a userid over SMS returns success via MockMvc.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPSMSTest() throws Exception {
 		// is user already present
 		Map<String, String> registerPathParams = new HashMap<>();
@@ -873,6 +955,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts send-OTP for a userid over SMS and email returns success.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPSMSEmailTest() throws Exception {
 		// is user already present
 		Map<String, String> registerPathParams = new HashMap<>();
@@ -960,6 +1047,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts send-OTP with an invalid userid returns an error via MockMvc.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void sendOTPInvalidUserIDTest() throws Exception {
 		// is user already present
 		Map<String, String> registerPathParams = new HashMap<>();
@@ -1047,6 +1139,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts userid+OTP authenticate for a UIN returns a token via MockMvc.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void userIdOTPUINTest() throws Exception {
 		// is user already present
 		Map<String, String> registerPathParams = new HashMap<>();
@@ -1076,7 +1173,7 @@ public class IntegrationTests {
 
 		// validateOTP
 		String validateOTPUrl = mosipEnvironment.getVerifyOtpUserApi();
-		UriComponentsBuilder validateOTPUrlBuilder = UriComponentsBuilder.fromHttpUrl(validateOTPUrl)
+		UriComponentsBuilder validateOTPUrlBuilder = UriComponentsBuilder.fromUriString(validateOTPUrl)
 				.queryParam("key", "112211").queryParam("otp", "717171");
 		ResponseWrapper<OtpValidatorResponseDto> repwr = new ResponseWrapper<>();
 		OtpValidatorResponseDto otpValidatorResponseDto = new OtpValidatorResponseDto();
@@ -1103,6 +1200,11 @@ public class IntegrationTests {
 	
 
 	@Test
+	/**
+	 * Asserts validate-token HTTP endpoint returns the user for a valid cookie.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void validateTokenTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1126,6 +1228,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts validate-token maps an authentication service exception.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void validateTokenAuthenticationServiceExceptionTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1150,8 +1257,42 @@ public class IntegrationTests {
 		mockMvc.perform(get("/authorize/admin/validateToken").contentType(MediaType.APPLICATION_JSON).cookie(cookie))
 				.andExpect(status().isInternalServerError());
 	}
+
+	@Test
+	/**
+	 * A one-part cookie is not a JWT (header.payload.signature). Must be HTTP 401,
+	 * not 500.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
+	public void validateAdminTokenMalformedJwtReturnsUnauthorized() throws Exception {
+		Cookie cookie = new Cookie("Authorization", "hsjsfbcsiefhjsedks");
+		mockMvc.perform(get("/authorize/admin/validateToken").contentType(MediaType.APPLICATION_JSON).cookie(cookie))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.errors[0].errorCode", is("KER-ATH-401")))
+				.andExpect(jsonPath("$.errors[0].message", is("Authentication Failed : Invalid Token :")));
+	}
+
+	@Test
+	/**
+	 * A two-part token (header.payload, no signature) must be HTTP 401.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
+	public void validateAdminTokenTwoPartJwtReturnsUnauthorized() throws Exception {
+		Cookie cookie = new Cookie("Authorization", "header.payload");
+		mockMvc.perform(get("/authorize/admin/validateToken").contentType(MediaType.APPLICATION_JSON).cookie(cookie))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.errors[0].errorCode", is("KER-ATH-401")))
+				.andExpect(jsonPath("$.errors[0].message", is("Authentication Failed : Invalid Token :")));
+	}
 	
 	@Test
+	/**
+	 * Asserts validate-token maps AuthManagerException.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void validateTokenAuthManagerExceptionTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1180,6 +1321,11 @@ public class IntegrationTests {
 
 	
 	@Test
+	/**
+	 * Asserts validate-token error path for an empty token cookie.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void validateTokenEmptyTokenTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1209,6 +1355,11 @@ public class IntegrationTests {
 	
 	
 	@Test
+	/**
+	 * Asserts validate-token maps a forbidden response.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void validateTokenForbiddenExceptionTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1235,6 +1386,11 @@ public class IntegrationTests {
 	}
 
 	@Test
+	/**
+	 * Asserts logout HTTP endpoint succeeds for a valid token cookie.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void logoutTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1259,6 +1415,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts logout error path for an empty token cookie.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void logoutEmptyTokenTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1283,6 +1444,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts logout error path when IAM logout fails.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void logoutFailedTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1307,6 +1473,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts logout maps a RestTemplate client exception.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void logoutRestExceptionTest() throws Exception {
 		ResponseWrapper<MosipUserDto> responseWrapper = new ResponseWrapper<MosipUserDto>();
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -1445,6 +1616,11 @@ public class IntegrationTests {
 
 
 	@Test
+	/**
+	 * Asserts refresh-token HTTP endpoint returns a new token.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void refreshTokenTest() throws Exception {
 
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
@@ -1477,6 +1653,11 @@ public class IntegrationTests {
 	}
 	
 	@Test
+	/**
+	 * Asserts refresh-token maps an HTTP client error.
+	 *
+	 * @throws Exception if the HTTP call fails
+	 */
 	public void refreshTokenHttpClientErrorTest() throws Exception {
 
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();

@@ -15,7 +15,9 @@ import io.swagger.v3.oas.models.servers.Server;
 
 
 /**
- * Configuration class for swagger config
+ * Configuration class for swagger config.
+ * Builds the Springdoc {@link OpenAPI} bean from {@link OpenApiProperties}
+ * bound under {@code openapi.*}.
  * 
  * @author Dharmesh Khandelwal
  * @since 1.0.0
@@ -24,11 +26,22 @@ import io.swagger.v3.oas.models.servers.Server;
 @Configuration
 public class SwaggerConfig {
 
+	/**
+	 * Logger reserved for this configuration class.
+	 */
 	private static final Logger logger = LoggerFactory.getLogger(SwaggerConfig.class);
 
+	/**
+	 * OpenAPI title, description, version, license, and server list from properties.
+	 */
 	@Autowired
 	private OpenApiProperties openApiProperties;
 
+	/**
+	 * OpenAPI document used by Springdoc for Swagger UI under authmanager.
+	 *
+	 * @return configured {@link OpenAPI} with info and servers
+	 */
 	@Bean
 	public OpenAPI openApi() {
 		OpenAPI api = new OpenAPI().components(new Components())

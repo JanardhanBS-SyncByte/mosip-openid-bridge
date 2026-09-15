@@ -11,9 +11,9 @@ import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.junit4.SpringRunner;
@@ -33,25 +33,43 @@ import io.mosip.kernel.core.authmanager.exception.AuthZException;
 import io.mosip.kernel.core.authmanager.model.MosipUserDto;
 import io.mosip.kernel.core.authmanager.model.OtpUser;
 
+/**
+ * Tests {@link OTPGenerateService} generate-OTP HTTP success and mapping of
+ * MOSIP/IAM error payloads and HTTP 401/403/400 to AuthN/AuthZ/AuthManager
+ * exceptions.
+ * <p>
+ * Uses Boot 4 {@link AutoConfigureMockMvc} from
+ * {@code org.springframework.boot.webmvc.test.autoconfigure} and
+ * {@link MockitoBean} for {@code authRestTemplate}.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 @AutoConfigureMockMvc
 public class OtpGeneratorServiceTest {
 
+	/** Auth RestTemplate replaced with a Mockito bean. */
 	@Qualifier("authRestTemplate")
-	@MockBean
+	@MockitoBean
 	RestTemplate authRestTemplate;
 
+	/** MOSIP environment URLs used to build the generate-OTP API. */
 	@Autowired
 	MosipEnvironment mosipEnvironment;
 
+	/** JSON mapper from the test context. */
 	@Autowired
 	private ObjectMapper mapper;
 	
+	/** OTP generate service under test. */
 	@Autowired
 	private OTPGenerateService oTPGenerateService;
 	
 	
+	/**
+	 * Asserts multi-channel generate-OTP returns the OTP from a SUCCESS payload.
+	 *
+	 * @throws Exception if generate fails
+	 */
 	@Test
 	public void generateOTPMultipleChannelsTest() throws Exception  {
 
@@ -69,6 +87,12 @@ public class OtpGeneratorServiceTest {
 		assertThat(otpGenerateResponseDto.getOtp(),is("820121"));
 	}
 	
+	/**
+	 * Asserts a MOSIP errors payload on generate-OTP raises
+	 * {@link AuthManagerServiceException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthManagerServiceException.class)
 	public void generateOTPMultipleChannelsAuthManagerServiceExceptionTest() throws Exception  {
 
@@ -84,6 +108,12 @@ public class OtpGeneratorServiceTest {
 		oTPGenerateService.generateOTPMultipleChannels(mosipUserDto, otpUser, "mock-token");
 	}
 	
+	/**
+	 * Asserts HTTP 403 with a plain body on multi-channel generate-OTP raises
+	 * {@link AuthManagerException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthManagerException.class)
 	public void generateOTPMultipleChannelsAuthManagerExceptionTest() throws Exception  {
 
@@ -100,6 +130,11 @@ public class OtpGeneratorServiceTest {
 	}
 	
 	
+	/**
+	 * Asserts HTTP 403 with KER-ATH-403 on generate-OTP raises {@link AuthZException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthZException.class)
 	public void generateOTPAuthZExceptionTest() throws Exception  {
 
@@ -117,6 +152,12 @@ public class OtpGeneratorServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts HTTP 403 with a plain body on generate-OTP raises
+	 * {@link AuthManagerException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthManagerException.class)
 	public void generateOTPAuthManagerExceptionForbiddenTest() throws Exception  {
 
@@ -130,6 +171,11 @@ public class OtpGeneratorServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts HTTP 401 with KER-ATH-401 on generate-OTP raises {@link AuthNException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthNException.class)
 	public void generateOTPAuthNExceptionTest() throws Exception  {
 
@@ -147,6 +193,12 @@ public class OtpGeneratorServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts HTTP 401 with a plain body on generate-OTP raises
+	 * {@link AuthManagerException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthManagerException.class)
 	public void generateOTPAuthManagerExceptionUnAuthTest() throws Exception  {
 
@@ -160,6 +212,12 @@ public class OtpGeneratorServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts HTTP 400 with a MOSIP errors payload on generate-OTP raises
+	 * {@link AuthManagerServiceException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthManagerServiceException.class)
 	public void generateOTPAuthManagerServiceExceptionTest() throws Exception  {
 
@@ -177,6 +235,12 @@ public class OtpGeneratorServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts HTTP 400 with a plain body on generate-OTP raises
+	 * {@link AuthManagerException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthManagerException.class)
 	public void generateOTPClientErrorTest() throws Exception  {
 
@@ -190,6 +254,12 @@ public class OtpGeneratorServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts HTTP 200 with a MOSIP errors payload on generate-OTP raises
+	 * {@link AuthManagerServiceException}.
+	 *
+	 * @throws Exception if generate fails unexpectedly
+	 */
 	@Test(expected = AuthManagerServiceException.class)
 	public void generateOTPValidationErrorTest() throws Exception  {
 		String resp = "{\r\n" + "  \"id\": \"string\", \"version\": \"string\",\r\n"

@@ -9,12 +9,15 @@ import java.util.List;
 import io.mosip.kernel.core.exception.ServiceError;
 
 /**
+ * Unchecked failure that aggregates multiple {@link ServiceError} entries,
+ * typically mapped from a downstream MOSIP error array.
+ *
  * @author Ramadurai Pandian
  *
  */
 public class AuthManagerServiceException extends RuntimeException {
 	/**
-	 * 
+	 * Serialization identifier.
 	 */
 	private static final long serialVersionUID = -3980982936992909434L;
 	/**

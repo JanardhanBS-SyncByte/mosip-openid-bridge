@@ -36,12 +36,15 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import reactor.core.publisher.Mono;
+
 import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkException;
 import com.auth0.jwk.JwkProvider;
 import com.auth0.jwk.UrlJwkProvider;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.exceptions.SignatureVerificationException;
 import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -59,61 +62,101 @@ import io.mosip.kernel.core.util.EmptyCheckUtils;
 import io.mosip.kernel.openid.bridge.model.MosipUserDto;
 import jakarta.annotation.PostConstruct;
 
+/**
+ * Low-level JWT and OIDC user-info validation used by servlet and Vert.x
+ * facades.
+ * <p>
+ * Online validation calls the user-info endpoint (RestTemplate or WebClient
+ * {@code exchangeToMono}). Offline validation uses JWKS, expiry, issuer host,
+ * RSA signature, and audience/{@code azp} checks. Dates use {@code DateUtils2}.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
+ */
 @Component
 public class ValidateTokenHelper {
 
+	/**
+	 * Logger for validation failures.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(ValidateTokenHelper.class);
 
+	/**
+	 * Cache of JWKS public keys keyed by JWT {@code kid}.
+	 */
 	private Map<String, PublicKey> publicKeys = new HashMap<>();
 
+	/**
+	 * Path appended after issuer+realm when {@link #certsUrl} is blank.
+	 */
 	@Value("${auth.server.admin.oidc.certs.path:/protocol/openid-connect/certs}")
 	private String certsPath;
 
+	/**
+	 * Path appended after issuer+realm when {@link #userInfoUrl} is blank.
+	 */
 	@Value("${auth.server.admin.oidc.userinfo.path:/protocol/openid-connect/userinfo}")
 	private String userInfo;
 
+	/**
+	 * When {@code true}, the JWT issuer host must match {@link #issuerURI}.
+	 */
 	@Value("${auth.server.admin.issuer.domain.validate:true}")
 	private boolean validateIssuerDomain;
 
 	/**
-	 * This should be same as the value in the token
+	 * Public issuer URI; must match the token {@code iss} host when domain
+	 * validation is enabled.
 	 */
 	@Value("${auth.server.admin.issuer.uri:}")
 	private String issuerURI;
 
 	/**
-	 * This property will directly apply the certs URL without need for constructing the path from issuer URL. 
-	 * This is useful to keep a different certs URL for integrating with MOSIP IdP for token validation.
+	 * Absolute JWKS URL; when set, realm-relative certs path is not used.
 	 */
 	@Value("${auth.server.admin.oidc.certs.url:}")
 	private String certsUrl;
 	
 	/**
-	 * This property will directly apply the userInfo URL without need for constructing the path from issuer URL. 
-	 * This is useful to keep a different userInfo URL for integrating with MOSIP IdP for token validation.
+	 * Absolute user-info URL; when set, realm-relative user-info path is not used.
 	 */
 	@Value("${auth.server.admin.oidc.userinfo.url:}")
 	private String userInfoUrl;
 	
 	/**
-	 * When we validate a token we use the issuerURL. In case you want us to
-	 * validate using an internal URL then the same has to be configured here.
+	 * Internal issuer URI used to build certs/user-info URLs; falls back to
+	 * {@link #issuerURI} when blank.
 	 */
 	@Value("${auth.server.admin.issuer.internal.uri:}")
 	private String issuerInternalURI;
 
+	/**
+	 * When {@code true}, audience or {@code azp} must match {@link #allowedAudience}.
+	 */
 	@Value("${auth.server.admin.audience.claim.validate:true}")
 	private boolean validateAudClaim;
 
+	/**
+	 * Allowed audience / AZP values, resolved per application name in {@link #init()}.
+	 */
 	// @Value("${auth.server.admin.allowed.audience:}")
 	private List<String> allowedAudience;
 
+	/**
+	 * Parses OIDC error JSON from failed user-info calls.
+	 */
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	/**
+	 * Used to resolve per-application allowed audience and application name.
+	 */
 	@Autowired
 	private Environment environment;
 
+	/**
+	 * Loads {@link #allowedAudience} and defaults {@link #issuerInternalURI} to
+	 * {@link #issuerURI} when blank.
+	 */
 	@PostConstruct
 	@SuppressWarnings("unchecked")
 	private void init() {
@@ -124,6 +167,12 @@ public class ValidateTokenHelper {
 		issuerInternalURI = issuerInternalURI.trim().isEmpty() ? issuerURI : issuerInternalURI;
 	}
 
+	/**
+	 * Returns the first comma-separated {@code spring.application.name} value.
+	 *
+	 * @return the hosting application name
+	 * @throws RuntimeException if the property is missing or blank
+	 */
 	@SuppressWarnings("java:S2259") // added suppress for sonarcloud. Null check is performed at line # 211
 	private String getApplicationName() {
 		String appNames = environment.getProperty("spring.application.name");
@@ -135,11 +184,26 @@ public class ValidateTokenHelper {
 		}
 	}
 
+	/**
+	 * Local-profile offline validation is no longer supported.
+	 *
+	 * @param jwtToken unused
+	 * @return never returns
+	 * @throws AuthManagerException always, with
+	 *                              {@link AuthAdapterErrorCode#OFFLINE_AUTH_DEPRECATED}
+	 */
 	public MosipUserDto doOfflineLocalTokenValidation(String jwtToken) {
 		LOGGER.info("offline verification for local profile.");
 		throw new AuthManagerException(OFFLINE_AUTH_DEPRECATED.getErrorCode(), OFFLINE_AUTH_DEPRECATED.getErrorMessage());
 	}
 
+	/**
+	 * Checks expiry, issuer host, RSA signature, and audience/{@code azp}.
+	 *
+	 * @param decodedJWT the decoded access token
+	 * @param publicKey  JWKS public key for the token {@code kid}
+	 * @return {@code (true, null)} when valid, otherwise {@code (false, error)}
+	 */
 	public ImmutablePair<Boolean, AuthAdapterErrorCode> isTokenValid(DecodedJWT decodedJWT, PublicKey publicKey) {
 		// First, token expire
 		LocalDateTime expiryTime = DateUtils2
@@ -181,6 +245,13 @@ public class ValidateTokenHelper {
 		return ImmutablePair.of(Boolean.TRUE, null);
 	}
 
+	/**
+	 * When {@link #validateAudClaim} is true, requires {@code aud} or {@code azp}
+	 * to match {@link #allowedAudience}.
+	 *
+	 * @param decodedJWT the decoded access token
+	 * @return {@code true} if audience checks are disabled or a match is found
+	 */
 	private boolean validateAudience(DecodedJWT decodedJWT) {
 		boolean matchFound = false;
 		if (validateAudClaim) {
@@ -200,9 +271,9 @@ public class ValidateTokenHelper {
 	/**
 	 * This method validates if the issuer domain in the JWT matches the issuerURI
 	 * configured in the properties.
-	 * 
-	 * @param decodedJWT
-	 * @return
+	 *
+	 * @param decodedJWT the decoded access token
+	 * @return {@code true} if token issuer host equals {@link #issuerURI} host
 	 */
 	private boolean getTokenIssuerDomain(DecodedJWT decodedJWT) {
 		String domain = decodedJWT.getClaim(AuthAdapterConstant.ISSUER).asString();
@@ -216,6 +287,13 @@ public class ValidateTokenHelper {
 		return false;
 	}
 
+	/**
+	 * Returns a cached or freshly downloaded JWKS public key for the token
+	 * {@code kid}.
+	 *
+	 * @param decodedJWT the decoded access token
+	 * @return the public key, or {@code null} if download failed
+	 */
 	public PublicKey getPublicKey(DecodedJWT decodedJWT) {
 		String userName = decodedJWT.getClaim(AuthAdapterConstant.PREFERRED_USERNAME).asString();
 		LOGGER.info("offline verification for environment profile. UserName: " + userName);
@@ -235,15 +313,36 @@ public class ValidateTokenHelper {
 		return publicKey;
 	}
 
+	/**
+	 * Reads the Keycloak realm as the last path segment of the {@code iss} claim.
+	 *
+	 * @param decodedJWT the decoded access token
+	 * @return the realm name
+	 */
 	private String getRealM(DecodedJWT decodedJWT) {
 		String tokenIssuer = decodedJWT.getClaim(AuthAdapterConstant.ISSUER).asString();
 		return tokenIssuer.substring(tokenIssuer.lastIndexOf("/") + 1);
 	}
 
+	/**
+	 * Downloads the JWKS key from {@link #issuerInternalURI}{@code + realm + certsPathVal}.
+	 *
+	 * @param keyId        JWT {@code kid}
+	 * @param certsPathVal certs path relative to issuer+realm
+	 * @param realm        Keycloak realm
+	 * @return the public key, or {@code null} on failure
+	 */
 	private PublicKey getIssuerPublicKey(String keyId, String certsPathVal, String realm) {
 		return getIssuerPublicKey(keyId, issuerInternalURI + realm + certsPathVal);
 	}
 	
+	/**
+	 * Downloads the JWKS key identified by {@code keyId} from {@code certsUrIPath}.
+	 *
+	 * @param keyId        JWT {@code kid}
+	 * @param certsUrIPath absolute JWKS URL
+	 * @return the public key, or {@code null} on failure
+	 */
 	private PublicKey getIssuerPublicKey(String keyId, String certsUrIPath) {
 		try {
 
@@ -257,6 +356,14 @@ public class ValidateTokenHelper {
 		return null;
 	}
 
+	/**
+	 * Maps JWT {@code alg} to Auth0 RSA verification (RS256/RS384/RS512; default
+	 * RS256).
+	 *
+	 * @param tokenAlgo JWT algorithm name
+	 * @param publicKey RSA public key
+	 * @return the verification algorithm
+	 */
 	private Algorithm getVerificationAlgorithm(String tokenAlgo, PublicKey publicKey) {
 		// Later will add other Algorithms.
 		switch (tokenAlgo) {
@@ -271,6 +378,14 @@ public class ValidateTokenHelper {
 		}
 	}
 
+	/**
+	 * Maps JWT claims to {@link MosipUserDto}, preferring {@code realm_access.roles}
+	 * over a flat {@code roles} claim.
+	 *
+	 * @param decodedJWT the decoded access token
+	 * @param jwtToken   original JWT string stored on the DTO
+	 * @return the MOSIP user
+	 */
 	@SuppressWarnings("unchecked")
 	public MosipUserDto buildMosipUser(DecodedJWT decodedJWT, String jwtToken) {
 		MosipUserDto mosipUserDto = new MosipUserDto();
@@ -299,13 +414,27 @@ public class ValidateTokenHelper {
 		return mosipUserDto;
 	}
 
+	/**
+	 * Calls the OIDC user-info endpoint with a Bearer token via RestTemplate, then
+	 * checks audience and maps the JWT to {@link MosipUserDto}.
+	 *
+	 * @param jwtToken     access-token JWT
+	 * @param restTemplate HTTP client
+	 * @return HTTP status plus user, or status with {@code null} user on failure
+	 */
 	public ImmutablePair<HttpStatus, MosipUserDto> doOnlineTokenValidation(String jwtToken, RestTemplate restTemplate) {
 		if ("".equals(issuerURI) || "".equals(issuerInternalURI)) {
 			LOGGER.warn("OIDC validate URL is not available in config file, not requesting for token validation.");
 			return ImmutablePair.of(HttpStatus.EXPECTATION_FAILED, null);
 		}
 
-		DecodedJWT decodedJWT = JWT.decode(jwtToken);
+		DecodedJWT decodedJWT;
+		try {
+			decodedJWT = JWT.decode(jwtToken);
+		} catch (JWTDecodeException e) {
+			LOGGER.error("Malformed JWT: expected header.payload.signature");
+			return ImmutablePair.of(HttpStatus.UNAUTHORIZED, null);
+		}
 		HttpHeaders headers = new HttpHeaders();
 		headers.add(AuthAdapterConstant.AUTH_REQUEST_COOOKIE_HEADER, AuthAdapterConstant.BEARER_STR + jwtToken);
 		HttpEntity<String> entity = new HttpEntity<>("parameters", headers);
@@ -344,6 +473,13 @@ public class ValidateTokenHelper {
 		return ImmutablePair.of(HttpStatus.UNAUTHORIZED, null);
 	}
 
+	/**
+	 * Builds the user-info URL from {@link #userInfoUrl} or issuer+realm+
+	 * {@link #userInfo}.
+	 *
+	 * @param decodedJWT the decoded access token (realm from {@code iss})
+	 * @return the user-info URL
+	 */
 	private String getUserInfoPath(DecodedJWT decodedJWT) {
 		String userInfoPath;
 		if(userInfoUrl == null || userInfoUrl.isEmpty()) {
@@ -355,19 +491,33 @@ public class ValidateTokenHelper {
 		return userInfoPath;
 	}
 
+	/**
+	 * Calls the OIDC user-info endpoint with a Bearer token via WebClient
+	 * {@code exchangeToMono}, then checks audience and maps the JWT.
+	 *
+	 * @param jwtToken  access-token JWT
+	 * @param webClient reactive HTTP client
+	 * @return HTTP status plus user, or status with {@code null} user on failure
+	 */
 	public ImmutablePair<HttpStatus, MosipUserDto> doOnlineTokenValidation(String jwtToken, WebClient webClient) {
 		if ("".equals(issuerURI) || "".equals(issuerInternalURI)) {
 			LOGGER.warn("OIDC validate URL is not available in config file, not requesting for token validation.");
 			return ImmutablePair.of(HttpStatus.EXPECTATION_FAILED, null);
 		}
 
-		DecodedJWT decodedJWT = JWT.decode(jwtToken);
+		DecodedJWT decodedJWT;
+		try {
+			decodedJWT = JWT.decode(jwtToken);
+		} catch (JWTDecodeException e) {
+			LOGGER.error("Malformed JWT: expected header.payload.signature");
+			return ImmutablePair.of(HttpStatus.UNAUTHORIZED, null);
+		}
 		HttpHeaders headers = new HttpHeaders();
 		headers.add(AuthAdapterConstant.AUTH_REQUEST_COOOKIE_HEADER, AuthAdapterConstant.BEARER_STR + jwtToken);
 		String userInfoPath = getUserInfoPath(decodedJWT);
 		ClientResponse response = webClient.method(HttpMethod.GET).uri(userInfoPath).headers(httpHeaders -> {
 			httpHeaders.addAll(headers);
-		}).exchange().block();
+		}).exchangeToMono(Mono::just).block();
 		if (response != null && response.statusCode() == HttpStatus.OK) {
 			ObjectNode responseBody = response.bodyToMono(ObjectNode.class).block();
 			if (responseBody != null) {

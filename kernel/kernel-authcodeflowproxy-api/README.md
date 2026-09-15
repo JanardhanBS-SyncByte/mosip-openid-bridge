@@ -2,59 +2,80 @@
 
 ## Overview
 
-This library provides server-side functions related to login using the **Authorization Code Flow**. The Authorization Code grant type is used by confidential and public clients to exchange an authorization code for an access token. For an overview on Authorization Code grant type, [refer here](https://oauth.net/2/grant-types/authorization-code/).
+**Kernel Auth Code Flow Proxy API** provides server-side login using the OAuth 2.0 [Authorization Code](https://oauth.net/2/grant-types/authorization-code/) grant: login, login-redirect, logout, and token validation against Keycloak (or a compatible IdP).
 
-## Features
+It is a **library** (not a Docker service). Do not fold it into `kernel-auth-service`. It depends on `kernel-openid-bridge-api` with **no** `<version>`.
 
-- Provides REST APIs for login, logout, and online token validation functionalities.
+This module previously lived in [commons](https://github.com/mosip/commons/tree/develop/kernel/kernel-authcodeflowproxy-api).
 
-## Local Setup
+Parent: [`../README.md`](../README.md)
 
-### Usage
+---
 
-1. To use this API, add it to your project's dependency list:
+# Local Setup
+
+## Prerequisites
+- **JDK:** 21
+- **Maven:** 3.9+
+- commons **`kernel-core` 1.4.1-SNAPSHOT** installed first
+
+## Usage
 
 ```xml
 <dependency>
     <groupId>io.mosip.kernel</groupId>
     <artifactId>kernel-authcodeflowproxy-api</artifactId>
-    <version>${project.version}</version>
+    <version>1.4.1-SNAPSHOT</version>
 </dependency>
+```
+
+When the host application starts, the library exposes login / logout / validate-token REST APIs.
+
+## Installation
+
+From `kernel/`:
+
+```text
+mvn -pl kernel-authcodeflowproxy-api -am clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 ```
 
 ## Configuration
 
 ### Properties
 
-Add the following properties to your configuration:
+From [mosip-config](https://github.com/mosip/mosip-config) or the host `application` / `kernel` files:
 
 ```properties
 auth.server.admin.validate.url=https://<host>/v1/authmanager/authorize/admin/validateToken
 mosip.iam.module.clientID=<module-client-id>
 mosip.iam.module.clientsecret=<module-client-secret>
-mosip.iam.module.redirecturi=https://<host>/<context-path>/login-redirect/	
-mosip.iam.module.admin_realm_id=<realm-id>	
-mosip.iam.base-url=<iam-bas-url>	
+mosip.iam.module.redirecturi=https://<host>/<context-path>/login-redirect/
+mosip.iam.module.admin_realm_id=<realm-id>
+mosip.iam.base-url=<iam-base-url>
 mosip.iam.authorization_endpoint=${mosip.iam.base-url}/auth/realms/{realmId}/protocol/openid-connect/auth
 mosip.iam.token_endpoint=${mosip.iam.base-url}/auth/realms/{realmId}/protocol/openid-connect/token
+auth.allowed.urls=https://<ui-host>/
 ```
 
-### Bean Scanning
+### Bean scanning
 
-Add the following package to scan for beans:
-
-```java
-io.mosip.kernel.authcodeflowproxy.api.*
+```text
+io.mosip.kernel.authcodeflowproxy.api
 ```
 
-> [!NOTE]
-> When the server is up, it will expose 4 new REST APIs.
+---
 
 ## Documentation
 
-For old commit history on this module please refer to MOSIP Commons repository under kernel folder (https://github.com/mosip/commons/tree/develop/kernel/kernel-authcodeflowproxy-api).
+### API Documentation
 
-For technical details, refer to the [MOSIP Kernel Authentication Manager Service Documentation](https://mosip.github.io/documentation/1.2.0/kernel-authentication-manager-service.html).
+[MOSIP Kernel Authentication Manager Service](https://mosip.github.io/documentation/1.2.0/kernel-authentication-manager-service.html)
+
+### Product Documentation
+
+[OpenID Bridge developer guide](https://docs.mosip.io/1.2.0/modules/commons/openid-bridge-developer-guide)
+
+---
 
 ## Contribution & Community
 
@@ -64,8 +85,8 @@ For technical details, refer to the [MOSIP Kernel Authentication Manager Service
 
 • For any GitHub issues: [Report here](https://github.com/mosip/mosip-openid-bridge/issues)
 
+---
+
 ## License
 
-This project is licensed under the [Mozilla Public License 2.0](LICENSE).
-
-
+This project is licensed under the [Mozilla Public License 2.0](../../LICENSE).

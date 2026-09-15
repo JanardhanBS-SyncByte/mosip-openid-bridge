@@ -38,40 +38,60 @@ import io.mosip.kernel.auth.defaultadapter.exception.AuthRestException;
 import io.mosip.kernel.auth.defaultadapter.helper.TokenHelper;
 import reactor.core.publisher.Mono;
 
+/**
+ * Tests {@link TokenHelper#getClientToken} for RestTemplate and WebClient
+ * client-credentials token requests, including HTTP errors, MOSIP error
+ * payloads, and malformed token responses.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 public class TokenHelperTest {
 
+	/** Public IAM issuer URI from test properties. */
 	@Value("${auth.server.admin.issuer.uri:}")
     private String issuerURI;
 	
+	/** Internal IAM issuer URI used to build the token endpoint. */
 	@Value("${auth.server.admin.issuer.internal.uri:}")
     private String issuerInternalURI;
 
+	/** JSON mapper from the test context. */
 	@Autowired
 	private ObjectMapper mapper;
 
+	/** App-id to Keycloak realm mapping from test properties. */
 	@Value("#{${mosip.kernel.auth.appids.realm.map}}")
 	private Map<String, String> realmMap;
 
+	/** OIDC token path appended to the issuer and realm. */
 	@Value("${auth.server.admin.oidc.token.path:/protocol/openid-connect/token}")
     private String tokenPath;
 	
+	/** Token helper under test. */
 	@Autowired
 	private TokenHelper tokenHelper;
 
+	/** Unused WebClient response-spec mock retained by the original test. */
 	@Mock
 	private WebClient.ResponseSpec responseSpec;
 	
 	
+	/** Mock RestTemplate used for client-token HTTP calls. */
 	private RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+	/** Mock WebClient used for reactive client-token HTTP calls. */
 	private WebClient webClient = Mockito.mock(WebClient.class);
 
+	/** Placeholder setup method; no initialization is required. */
 	public void init() {
 		
 	}
 	
 	
+	/**
+	 * Asserts RestTemplate client-token success returns the access token.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void getClientTokenTest() throws Exception {
 		String tokenUrl = new StringBuilder(issuerInternalURI).append("mosip").append(tokenPath).toString();
@@ -81,6 +101,11 @@ public class TokenHelperTest {
 	    assertTrue(token.equals("mock-token"));
 	}
 	
+	/**
+	 * Asserts a 404 from the token endpoint yields a {@code null} token.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void getClientTokenHttpExceptionTest() throws Exception {
 		String tokenUrl = new StringBuilder(issuerInternalURI).append("mosip").append(tokenPath).toString();
@@ -91,6 +116,12 @@ public class TokenHelperTest {
 	    assertNull(token);
 	}
 	
+	/**
+	 * Asserts a MOSIP errors payload from the token endpoint raises
+	 * {@link AuthRestException}.
+	 *
+	 * @throws Exception if the helper call fails unexpectedly
+	 */
 	@Test(expected = AuthRestException.class)
 	public void getClientTokenAuthRestExceptionTest() throws Exception {
 		String tokenUrl = new StringBuilder(issuerInternalURI).append("mosip").append(tokenPath).toString();
@@ -100,6 +131,11 @@ public class TokenHelperTest {
 	    assertNull(token);
 	}
 	
+	/**
+	 * Asserts a malformed token JSON body yields a {@code null} token.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void getTokenValidatedVertxUserResponse() throws Exception {
 		String tokenUrl = new StringBuilder(issuerInternalURI).append("mosip").append(tokenPath).toString();
@@ -110,6 +146,11 @@ public class TokenHelperTest {
 	}
 	
 	
+	/**
+	 * Asserts WebClient client-token success returns the access token.
+	 *
+	 * @throws Exception if JSON parsing or the helper call fails
+	 */
 	@Test
 	public void getClientTokenWebClientTest() throws Exception {
 		String tokenUrl = new StringBuilder(issuerInternalURI).append("mosip").append(tokenPath).toString();
@@ -123,13 +164,19 @@ public class TokenHelperTest {
 		when(requestBodyUriSpec.uri(UriComponentsBuilder.fromUriString(tokenUrl).toUriString())).thenReturn(requestBodySpec);
 		when(requestBodySpec.contentType(MediaType.APPLICATION_FORM_URLENCODED)).thenReturn(requestBodySpec);
 		Mockito.doReturn(requestHeadersSpec).when(requestBodySpec).body(Mockito.any());
-		Mockito.doReturn(Mono.just(clientResponse)).when(requestHeadersSpec).exchange();
+		Mockito.doReturn(Mono.just(clientResponse)).when(requestHeadersSpec).exchangeToMono(Mockito.any());
 		when(clientResponse.statusCode()).thenReturn(HttpStatus.OK);
 		when(clientResponse.bodyToMono(ObjectNode.class)).thenReturn(Mono.just(actualObj));
 		String token=tokenHelper.getClientToken("mock-clientID", "mock-clientSecret", "ida", webClient);
 	    assertTrue(token.equals("mock-token"));
 	}
 
+	/**
+	 * Asserts WebClient HTTP 401 from the token endpoint yields a {@code null}
+	 * token.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void getClientTokenWebClientErrorTest() throws Exception {
 		String tokenUrl = new StringBuilder(issuerInternalURI).append("mosip").append(tokenPath).toString();
@@ -141,7 +188,7 @@ public class TokenHelperTest {
 		when(requestBodyUriSpec.uri(UriComponentsBuilder.fromUriString(tokenUrl).toUriString())).thenReturn(requestBodySpec);
 		when(requestBodySpec.contentType(MediaType.APPLICATION_FORM_URLENCODED)).thenReturn(requestBodySpec);
 		Mockito.doReturn(requestHeadersSpec).when(requestBodySpec).body(Mockito.any());
-		Mockito.doReturn(Mono.just(clientResponse)).when(requestHeadersSpec).exchange();
+		Mockito.doReturn(Mono.just(clientResponse)).when(requestHeadersSpec).exchangeToMono(Mockito.any());
 		when(clientResponse.statusCode()).thenReturn(HttpStatus.UNAUTHORIZED);
 		String token=tokenHelper.getClientToken("mock-clientID", "mock-clientSecret", "ida", webClient);
 	    assertNull(token);

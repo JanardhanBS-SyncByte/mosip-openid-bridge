@@ -12,7 +12,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * This class is a filter for giving Access Headers to solve CORS
+ * Servlet filter that sets Access-Control headers so browser clients can call
+ * authmanager across origins. Reflects the request {@code Origin} when present
+ * and allows credentials. CORS preflight {@code OPTIONS} requests are answered
+ * with headers only and are not forwarded down the chain.
  * 
  * @author Mindtree Ltd.
  *
@@ -25,6 +28,16 @@ public class CorsFilter implements Filter {
 		// Default Constructor
 	}
 
+	/**
+	 * Writes CORS response headers and continues the filter chain for non-OPTIONS
+	 * methods.
+	 *
+	 * @param req   incoming servlet request
+	 * @param res   servlet response used to set Access-Control headers
+	 * @param chain remaining filters and the target resource
+	 * @throws IOException      if the chain fails while writing
+	 * @throws ServletException if the chain fails while processing
+	 */
 	@Override
 	public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
 			throws IOException, ServletException {
@@ -45,11 +58,19 @@ public class CorsFilter implements Filter {
 		}
 	}
 
+	/**
+	 * Filter lifecycle hook; no initialization is required.
+	 *
+	 * @param filterConfig servlet filter configuration (unused)
+	 */
 	@Override
 	public void init(FilterConfig filterConfig) {
 		// init method from Filter
 	}
 
+	/**
+	 * Filter lifecycle hook; no resources are held.
+	 */
 	@Override
 	public void destroy() {
 		// destroy method from Filter

@@ -39,6 +39,7 @@ import org.springframework.web.reactive.function.client.WebClient.RequestBodyUri
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterConstant;
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterErrorCode;
@@ -47,40 +48,62 @@ import io.mosip.kernel.auth.defaultadapter.helper.ValidateTokenHelper;
 import io.mosip.kernel.openid.bridge.model.MosipUserDto;
 import reactor.core.publisher.Mono;
 
+/**
+ * Tests {@link ValidateTokenHelper} online userinfo validation (RestTemplate and
+ * WebClient), unsigned-token offline rejection, RSA algorithm variants, expiry
+ * / issuer / signature / audience failures, and JWKS public-key lookup.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 public class ValidateTokenHelperTest {
 
+	/** JSON mapper from the test context. */
 	@Autowired
 	private ObjectMapper mapper;
 
+	/** OIDC JWKS path from test properties. */
 	@Value("${auth.server.admin.oidc.certs.path:/protocol/openid-connect/certs}")
 	private String certsPath;
 
+	/** OIDC userinfo path from test properties. */
 	@Value("${auth.server.admin.oidc.userinfo.path:/protocol/openid-connect/userinfo}")
 	private String userInfo;
 
+	/** Whether issuer domain is validated. */
 	@Value("${auth.server.admin.issuer.domain.validate:true}")
 	private boolean validateIssuerDomain;
 
+	/** Public IAM issuer URI. */
 	@Value("${auth.server.admin.issuer.uri:}")
 	private String issuerURI;
 
+	/** Internal IAM issuer URI used to build the userinfo URL. */
 	@Value("${auth.server.admin.issuer.internal.uri:}")
 	private String issuerInternalURI;
 
+	/** Whether audience claim validation is enabled. */
 	@Value("${auth.server.admin.audience.claim.validate:true}")
 	private boolean validateAudClaim;
 
+	/** App-id to Keycloak realm mapping from test properties. */
 	@Value("#{${mosip.kernel.auth.appids.realm.map}}")
 	private Map<String, String> realmMap;
 
+	/** Token validation helper under test. */
 	@Autowired
 	private ValidateTokenHelper validateTokenHelper;
 
+	/** Mock RestTemplate for userinfo HTTP calls. */
 	private RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+	/** Mock WebClient for reactive userinfo HTTP calls. */
 	private WebClient webClient = Mockito.mock(WebClient.class);
 
+	/**
+	 * Asserts RestTemplate userinfo HTTP 403 yields a pair with a {@code null}
+	 * user.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void doOnlineTokenValidationTest() throws Exception {
 		String token = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJzNmYxcDYwYWVDTTBrNy1NaW9sN0Zib2FTdXlRYm95UC03S1RUTmVWLWZNIn0.eyJqdGkiOiJmYTU4Y2NjMC00ZDRiLTQ2ZjAtYjgwOC0yMWI4ZTdhNmMxNDMiLCJleHAiOjE2NDAxODc3MTksIm5iZiI6MCwiaWF0IjoxNjQwMTUxNzE5LCJpc3MiOiJodHRwczovL2Rldi5tb3NpcC5uZXQva2V5Y2xvYWsvYXV0aC9yZWFsbXMvbW9zaXAiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiOWRiZTE0MDEtNTQ1NC00OTlhLTlhMWItNzVhZTY4M2Q0MjZhIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwiYXV0aF90aW1lIjowLCJzZXNzaW9uX3N0YXRlIjoiY2QwYjU5NjEtOTYzMi00NmE0LWIzMzgtODc4MWEzNDVmMTZiIiwiYWNyIjoiMSIsImFsbG93ZWQtb3JpZ2lucyI6WyJodHRwczovL2Rldi5tb3NpcC5uZXQiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIkNSRURFTlRJQUxfUkVRVUVTVCIsIlJFU0lERU5UIiwib2ZmbGluZV9hY2Nlc3MiLCJQQVJUTkVSX0FETUlOIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJtb3NpcC1yZXNpZGVudC1jbGllbnQiOnsicm9sZXMiOlsidW1hX3Byb3RlY3Rpb24iXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsImNsaWVudEhvc3QiOiIxMC4yNDQuNS4xNDgiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImNsaWVudElkIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwicHJlZmVycmVkX3VzZXJuYW1lIjoic2VydmljZS1hY2NvdW50LW1vc2lwLXJlc2lkZW50LWNsaWVudCIsImNsaWVudEFkZHJlc3MiOiIxMC4yNDQuNS4xNDgifQ.xZq1m3mBTEvFDENKFOI59QsSl3sd_TSDNbhTAOq4x_x_4voPc4hh08gIxUdsVHfXY4T0P8DdZ1xNt8xd1VWc33Hc4b_3kK7ksGY4wwqtb0-pDLQGajCGuG6vebC1rYcjsGRbJ1Gnrj_F2RNY4Ky6Nq5SAJ1Lh_NVKNKFghAXb3YrlmqlmCB1fCltC4XBqNnF5_k4uzLCu_Wr0lt_M87X97DktaRGLOD2_HY1Ire9YPsWkoO8y7X_DRCY59yQDVgYs2nAiR6Am-c55Q0fEQ0HuB4IJHlhtMHm27dXPdOEhFhR8ZPOyeO6ZIcIm0ZTDjusrruqWy2_yO5fe3XIHkCOAw";
@@ -94,6 +117,11 @@ public class ValidateTokenHelperTest {
 		assertNull(res.getValue());
 	}
 
+	/**
+	 * Asserts RestTemplate userinfo HTTP 200 yields a non-null user DTO.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void doOnlineTokenValidation_withResponseStatusAsOK() throws Exception {
 		String token = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJzNmYxcDYwYWVDTTBrNy1NaW9sN0Zib2FTdXlRYm95UC03S1RUTmVWLWZNIn0.eyJqdGkiOiJmYTU4Y2NjMC00ZDRiLTQ2ZjAtYjgwOC0yMWI4ZTdhNmMxNDMiLCJleHAiOjE2NDAxODc3MTksIm5iZiI6MCwiaWF0IjoxNjQwMTUxNzE5LCJpc3MiOiJodHRwczovL2Rldi5tb3NpcC5uZXQva2V5Y2xvYWsvYXV0aC9yZWFsbXMvbW9zaXAiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiOWRiZTE0MDEtNTQ1NC00OTlhLTlhMWItNzVhZTY4M2Q0MjZhIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwiYXV0aF90aW1lIjowLCJzZXNzaW9uX3N0YXRlIjoiY2QwYjU5NjEtOTYzMi00NmE0LWIzMzgtODc4MWEzNDVmMTZiIiwiYWNyIjoiMSIsImFsbG93ZWQtb3JpZ2lucyI6WyJodHRwczovL2Rldi5tb3NpcC5uZXQiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIkNSRURFTlRJQUxfUkVRVUVTVCIsIlJFU0lERU5UIiwib2ZmbGluZV9hY2Nlc3MiLCJQQVJUTkVSX0FETUlOIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJtb3NpcC1yZXNpZGVudC1jbGllbnQiOnsicm9sZXMiOlsidW1hX3Byb3RlY3Rpb24iXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsImNsaWVudEhvc3QiOiIxMC4yNDQuNS4xNDgiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImNsaWVudElkIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwicHJlZmVycmVkX3VzZXJuYW1lIjoic2VydmljZS1hY2NvdW50LW1vc2lwLXJlc2lkZW50LWNsaWVudCIsImNsaWVudEFkZHJlc3MiOiIxMC4yNDQuNS4xNDgifQ.xZq1m3mBTEvFDENKFOI59QsSl3sd_TSDNbhTAOq4x_x_4voPc4hh08gIxUdsVHfXY4T0P8DdZ1xNt8xd1VWc33Hc4b_3kK7ksGY4wwqtb0-pDLQGajCGuG6vebC1rYcjsGRbJ1Gnrj_F2RNY4Ky6Nq5SAJ1Lh_NVKNKFghAXb3YrlmqlmCB1fCltC4XBqNnF5_k4uzLCu_Wr0lt_M87X97DktaRGLOD2_HY1Ire9YPsWkoO8y7X_DRCY59yQDVgYs2nAiR6Am-c55Q0fEQ0HuB4IJHlhtMHm27dXPdOEhFhR8ZPOyeO6ZIcIm0ZTDjusrruqWy2_yO5fe3XIHkCOAw";
@@ -106,17 +134,25 @@ public class ValidateTokenHelperTest {
 		Assert.assertNotNull(res.getValue());
 	}
 
+	/**
+	 * Asserts WebClient userinfo HTTP 200 maps the preferred username onto the
+	 * user DTO.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void doOnlineTokenValidationWebClientTest() throws Exception {
 		String token = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJzNmYxcDYwYWVDTTBrNy1NaW9sN0Zib2FTdXlRYm95UC03S1RUTmVWLWZNIn0.eyJqdGkiOiJmYTU4Y2NjMC00ZDRiLTQ2ZjAtYjgwOC0yMWI4ZTdhNmMxNDMiLCJleHAiOjE2NDAxODc3MTksIm5iZiI6MCwiaWF0IjoxNjQwMTUxNzE5LCJpc3MiOiJodHRwczovL2Rldi5tb3NpcC5uZXQva2V5Y2xvYWsvYXV0aC9yZWFsbXMvbW9zaXAiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiOWRiZTE0MDEtNTQ1NC00OTlhLTlhMWItNzVhZTY4M2Q0MjZhIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwiYXV0aF90aW1lIjowLCJzZXNzaW9uX3N0YXRlIjoiY2QwYjU5NjEtOTYzMi00NmE0LWIzMzgtODc4MWEzNDVmMTZiIiwiYWNyIjoiMSIsImFsbG93ZWQtb3JpZ2lucyI6WyJodHRwczovL2Rldi5tb3NpcC5uZXQiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIkNSRURFTlRJQUxfUkVRVUVTVCIsIlJFU0lERU5UIiwib2ZmbGluZV9hY2Nlc3MiLCJQQVJUTkVSX0FETUlOIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJtb3NpcC1yZXNpZGVudC1jbGllbnQiOnsicm9sZXMiOlsidW1hX3Byb3RlY3Rpb24iXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsImNsaWVudEhvc3QiOiIxMC4yNDQuNS4xNDgiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImNsaWVudElkIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwicHJlZmVycmVkX3VzZXJuYW1lIjoic2VydmljZS1hY2NvdW50LW1vc2lwLXJlc2lkZW50LWNsaWVudCIsImNsaWVudEFkZHJlc3MiOiIxMC4yNDQuNS4xNDgifQ.xZq1m3mBTEvFDENKFOI59QsSl3sd_TSDNbhTAOq4x_x_4voPc4hh08gIxUdsVHfXY4T0P8DdZ1xNt8xd1VWc33Hc4b_3kK7ksGY4wwqtb0-pDLQGajCGuG6vebC1rYcjsGRbJ1Gnrj_F2RNY4Ky6Nq5SAJ1Lh_NVKNKFghAXb3YrlmqlmCB1fCltC4XBqNnF5_k4uzLCu_Wr0lt_M87X97DktaRGLOD2_HY1Ire9YPsWkoO8y7X_DRCY59yQDVgYs2nAiR6Am-c55Q0fEQ0HuB4IJHlhtMHm27dXPdOEhFhR8ZPOyeO6ZIcIm0ZTDjusrruqWy2_yO5fe3XIHkCOAw";
 		String userInfoPath = issuerInternalURI + "mosip" + userInfo;
 		RequestBodyUriSpec requestBodyUriSpec = Mockito.mock(RequestBodyUriSpec.class);
-		String resp = "{\"access_token\":\"mock-token\"}";
+		ClientResponse clientResponse = Mockito.mock(ClientResponse.class);
+		ObjectNode actualObj = (ObjectNode) mapper.readTree("{\"access_token\":\"mock-token\"}");
 		when(webClient.method(HttpMethod.GET)).thenReturn(requestBodyUriSpec);
 		when(requestBodyUriSpec.uri(userInfoPath)).thenReturn(requestBodyUriSpec);
 		when(requestBodyUriSpec.headers(Mockito.any())).thenReturn(requestBodyUriSpec);
-		when(requestBodyUriSpec.exchange()).thenReturn(Mono.just(
-				ClientResponse.create(HttpStatus.OK).header("Content-type", "application/json").body(resp).build()));
+		when(requestBodyUriSpec.exchangeToMono(Mockito.any())).thenReturn(Mono.just(clientResponse));
+		when(clientResponse.statusCode()).thenReturn(HttpStatus.OK);
+		when(clientResponse.bodyToMono(ObjectNode.class)).thenReturn(Mono.just(actualObj));
 		ImmutablePair<HttpStatus, MosipUserDto> res = validateTokenHelper.doOnlineTokenValidation(token, webClient);
 		assertThat(res.getRight().getUserId(), is("service-account-mosip-resident-client"));
 	}
@@ -143,6 +179,11 @@ public class ValidateTokenHelperTest {
 	 * assertThat(res.getKey(),is(HttpStatus.UNAUTHORIZED)); }
 	 */
 
+	/**
+	 * Asserts WebClient userinfo HTTP 401 yields an UNAUTHORIZED status pair.
+	 *
+	 * @throws Exception if the helper call fails
+	 */
 	@Test
 	public void doOnlineTokenValidationWebClientErrorTest() throws Exception {
 		String token = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJzNmYxcDYwYWVDTTBrNy1NaW9sN0Zib2FTdXlRYm95UC03S1RUTmVWLWZNIn0.eyJqdGkiOiJmYTU4Y2NjMC00ZDRiLTQ2ZjAtYjgwOC0yMWI4ZTdhNmMxNDMiLCJleHAiOjE2NDAxODc3MTksIm5iZiI6MCwiaWF0IjoxNjQwMTUxNzE5LCJpc3MiOiJodHRwczovL2Rldi5tb3NpcC5uZXQva2V5Y2xvYWsvYXV0aC9yZWFsbXMvbW9zaXAiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiOWRiZTE0MDEtNTQ1NC00OTlhLTlhMWItNzVhZTY4M2Q0MjZhIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwiYXV0aF90aW1lIjowLCJzZXNzaW9uX3N0YXRlIjoiY2QwYjU5NjEtOTYzMi00NmE0LWIzMzgtODc4MWEzNDVmMTZiIiwiYWNyIjoiMSIsImFsbG93ZWQtb3JpZ2lucyI6WyJodHRwczovL2Rldi5tb3NpcC5uZXQiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIkNSRURFTlRJQUxfUkVRVUVTVCIsIlJFU0lERU5UIiwib2ZmbGluZV9hY2Nlc3MiLCJQQVJUTkVSX0FETUlOIiwidW1hX2F1dGhvcml6YXRpb24iXX0sInJlc291cmNlX2FjY2VzcyI6eyJtb3NpcC1yZXNpZGVudC1jbGllbnQiOnsicm9sZXMiOlsidW1hX3Byb3RlY3Rpb24iXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsImNsaWVudEhvc3QiOiIxMC4yNDQuNS4xNDgiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImNsaWVudElkIjoibW9zaXAtcmVzaWRlbnQtY2xpZW50IiwicHJlZmVycmVkX3VzZXJuYW1lIjoic2VydmljZS1hY2NvdW50LW1vc2lwLXJlc2lkZW50LWNsaWVudCIsImNsaWVudEFkZHJlc3MiOiIxMC4yNDQuNS4xNDgifQ.xZq1m3mBTEvFDENKFOI59QsSl3sd_TSDNbhTAOq4x_x_4voPc4hh08gIxUdsVHfXY4T0P8DdZ1xNt8xd1VWc33Hc4b_3kK7ksGY4wwqtb0-pDLQGajCGuG6vebC1rYcjsGRbJ1Gnrj_F2RNY4Ky6Nq5SAJ1Lh_NVKNKFghAXb3YrlmqlmCB1fCltC4XBqNnF5_k4uzLCu_Wr0lt_M87X97DktaRGLOD2_HY1Ire9YPsWkoO8y7X_DRCY59yQDVgYs2nAiR6Am-c55Q0fEQ0HuB4IJHlhtMHm27dXPdOEhFhR8ZPOyeO6ZIcIm0ZTDjusrruqWy2_yO5fe3XIHkCOAw";
@@ -152,12 +193,18 @@ public class ValidateTokenHelperTest {
 		when(webClient.method(HttpMethod.GET)).thenReturn(requestBodyUriSpec);
 		when(requestBodyUriSpec.uri(userInfoPath)).thenReturn(requestBodyUriSpec);
 		when(requestBodyUriSpec.headers(Mockito.any())).thenReturn(requestBodyUriSpec);
-		when(requestBodyUriSpec.exchange()).thenReturn(Mono.just(ClientResponse.create(HttpStatus.UNAUTHORIZED)
+		when(requestBodyUriSpec.exchangeToMono(Mockito.any())).thenReturn(Mono.just(ClientResponse.create(HttpStatus.UNAUTHORIZED)
 				.header("Content-type", "application/json").body(resp).build()));
 		ImmutablePair<HttpStatus, MosipUserDto> res = validateTokenHelper.doOnlineTokenValidation(token, webClient);
 		assertThat(res.getKey(), is(HttpStatus.UNAUTHORIZED));
 	}
 
+	/**
+	 * Asserts an unsigned ({@code alg=none}) JWT is rejected by offline local
+	 * validation with {@link AuthManagerException}.
+	 *
+	 * @throws Exception if the helper call fails unexpectedly
+	 */
 	@Test(expected = AuthManagerException.class)
 	public void doOfflineTokenValidationTest() throws Exception {
 		String token = JWT.create().withClaim(AuthAdapterConstant.EMAIL, "mockuser!mosip.com")
@@ -172,6 +219,11 @@ public class ValidateTokenHelperTest {
 
 	}
 
+	/**
+	 * Asserts an RSA256-signed JWT with matching issuer and audience is valid.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void isTokenValidTest() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -195,6 +247,11 @@ public class ValidateTokenHelperTest {
 		assertThat(res.left, is(true));
 	}
 
+	/**
+	 * Asserts an RSA384-signed JWT is accepted by {@code isTokenValid}.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void isTokenValid_withRSA384Algo_thenPass() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -218,6 +275,11 @@ public class ValidateTokenHelperTest {
 		assertThat(res.left, is(true));
 	}
 
+	/**
+	 * Asserts an RSA512-signed JWT is accepted by {@code isTokenValid}.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void isTokenValid_withRSA512Algo_thenPass() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -241,6 +303,11 @@ public class ValidateTokenHelperTest {
 		assertThat(res.left, is(true));
 	}
 
+	/**
+	 * Asserts an expired JWT is invalid with {@code UNAUTHORIZED}.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void isTokenInvalidExpiryTest() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -263,6 +330,12 @@ public class ValidateTokenHelperTest {
 		assertThat(res.right, is(AuthAdapterErrorCode.UNAUTHORIZED));
 	}
 
+	/**
+	 * Asserts a JWT with a non-configured issuer is invalid with
+	 * {@code UNAUTHORIZED}.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void isTokenInvalidIssuerTest() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -285,6 +358,12 @@ public class ValidateTokenHelperTest {
 		assertThat(res.right, is(AuthAdapterErrorCode.UNAUTHORIZED));
 	}
 
+	/**
+	 * Asserts a JWT verified against a different RSA public key is invalid with
+	 * {@code UNAUTHORIZED}.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void isTokenInvalidSignatureTest() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -307,6 +386,12 @@ public class ValidateTokenHelperTest {
 		assertThat(res.right, is(AuthAdapterErrorCode.UNAUTHORIZED));
 	}
 	
+	/**
+	 * Asserts a JWT whose audience is not allowed is invalid with
+	 * {@code FORBIDDEN}.
+	 *
+	 * @throws Exception if key generation or validation fails
+	 */
 	@Test
 	public void isTokenInvalidAUDTest() throws Exception {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
@@ -330,6 +415,12 @@ public class ValidateTokenHelperTest {
 		assertThat(res.right, is(AuthAdapterErrorCode.FORBIDDEN));
 	}
 
+	/**
+	 * Asserts {@code getPublicKey} returns the cached JWKS key matching the JWT
+	 * {@code kid}.
+	 *
+	 * @throws Exception if key generation or lookup fails
+	 */
 	@Test
 	public void getPublicKey_withValidDetails_thenPass() throws Exception {
 		// Setup: Mock dependencies and prepare the environment
@@ -349,6 +440,12 @@ public class ValidateTokenHelperTest {
 	}
 
 
+	/**
+	 * Asserts {@code getPublicKey} returns {@code null} when the JWKS cache has
+	 * no matching {@code kid}.
+	 *
+	 * @throws Exception if JWT decode or lookup fails
+	 */
 	@Test
 	public void getPublicKey_withInValidDetails_thenPass() throws Exception {
 		Map<String, PublicKey> publicKeyMap=new HashMap<>();

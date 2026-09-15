@@ -29,32 +29,73 @@ import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import reactor.core.publisher.Mono;
+
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterConstant;
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterErrorCode;
 import io.mosip.kernel.auth.defaultadapter.exception.AuthRestException;
 import io.mosip.kernel.core.exception.ExceptionUtils;
 import io.mosip.kernel.core.exception.ServiceError;
 
+/**
+ * Obtains OIDC client-credentials access tokens from Keycloak (or compatible
+ * issuer) for the service self-token.
+ * <p>
+ * The RestTemplate overload posts form data; the WebClient overload uses
+ * {@code exchangeToMono}. Realm is resolved from
+ * {@code mosip.kernel.auth.appids.realm.map}.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
+ */
 @Component
 public class TokenHelper {
 
+	/**
+	 * Logger for token-endpoint diagnostics.
+	 */
 	private static final Logger LOGGER = LoggerFactory.getLogger(TokenHelper.class);
 
+	/**
+	 * Public OIDC issuer URI (used when the internal URI is blank).
+	 */
 	@Value("${auth.server.admin.issuer.uri:}")
 	private String issuerURI;
 
+	/**
+	 * Internal OIDC issuer URI for in-cluster token requests.
+	 */
 	@Value("${auth.server.admin.issuer.internal.uri:}")
 	private String issuerInternalURI;
 
+	/**
+	 * Parses the token-endpoint JSON body.
+	 */
 	@Autowired
 	private ObjectMapper mapper;
 
+	/**
+	 * Map of MOSIP application id to Keycloak realm name.
+	 */
 	@Value("#{${mosip.kernel.auth.appids.realm.map}}")
 	private Map<String, String> realmMap;
 
+	/**
+	 * Path appended after the realm, default OpenID Connect token endpoint.
+	 */
 	@Value("${auth.server.admin.oidc.token.path:/protocol/openid-connect/token}")
 	private String tokenPath;
 
+	/**
+	 * Requests a client-credentials token using {@link RestTemplate}.
+	 *
+	 * @param clientId     OIDC client id
+	 * @param clientSecret OIDC client secret
+	 * @param appId        MOSIP application id used to resolve the realm
+	 * @param restTemplate HTTP client
+	 * @return the access token, or {@code null} if the issuer/realm is missing or
+	 *         the call failed
+	 * @throws AuthRestException if the body contains MOSIP {@link ServiceError}s
+	 */
 	public String getClientToken(String clientId, String clientSecret, String appId, RestTemplate restTemplate) {
 		if ("".equals(issuerURI)) {
 			LOGGER.warn("OIDC Service URL is not available in config file, not requesting for new auth token.");
@@ -107,6 +148,17 @@ public class TokenHelper {
 		return null;
 	}
 
+	/**
+	 * Requests a client-credentials token using {@link WebClient}
+	 * {@code exchangeToMono}.
+	 *
+	 * @param clientId     OIDC client id
+	 * @param clientSecret OIDC client secret
+	 * @param appId        MOSIP application id used to resolve the realm
+	 * @param webClient    reactive HTTP client
+	 * @return the access token, or {@code null} if the issuer/realm is missing or
+	 *         the call failed
+	 */
 	public String getClientToken(String clientId, String clientSecret, String appId, WebClient webClient) {
 		if ("".equals(issuerURI)) {
 			LOGGER.warn("OIDC Service URL is not available in config file, not requesting for new auth token.");
@@ -127,7 +179,7 @@ public class TokenHelper {
 				.uri(UriComponentsBuilder.fromUriString(tokenUrl).toUriString())
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.body(BodyInserters.fromFormData(valueMap))
-				.exchange().block();
+				.exchangeToMono(Mono::just).block();
 		if (response != null && response.statusCode() == HttpStatus.OK) {
 			ObjectNode responseBody = response.bodyToMono(ObjectNode.class).block();
 			String accessToken = null;
@@ -143,6 +195,12 @@ public class TokenHelper {
 		return null;
 	}
 
+	/**
+	 * Lower-cases the realm name for {@code appId} from {@link #realmMap}.
+	 *
+	 * @param appId MOSIP application id
+	 * @return the realm, or {@code null} if unmapped
+	 */
 	private String getRealmIdFromAppId(String appId) {
 
 		if (realmMap.get(appId) != null) {

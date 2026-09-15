@@ -31,39 +31,94 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * REST controller that proxies the OAuth 2.0 authorization-code flow against Keycloak
+ * (or a compatible IdP) for MOSIP UI clients.
+ * <p>
+ * Endpoints start login, complete the authorization-code callback, validate the access
+ * token cookie, and log the user out. Redirect targets are Base64-encoded path segments
+ * and are checked against {@code auth.allowed.urls} (exact match or Ant-style patterns)
+ * before any 302 is issued. Tokens are stored in HTTP-only cookies.
+ */
 @RestController
 public class LoginController {
 	
+	/**
+	 * Default cookie / claim name used for the OpenID Connect ID token when
+	 * {@code idToken} is not configured in the environment.
+	 */
 	private static final String ID_TOKEN = "id_token";
 
+	/**
+	 * Logger for login, redirect-allowlist, and ID-token correlation failures.
+	 */
 	private final static Logger LOGGER= LoggerFactory.getLogger(LoginController.class);
+
+	/**
+	 * Environment property key that names the ID-token cookie. Falls back to {@link #ID_TOKEN}.
+	 */
 	private static final String IDTOKEN = "idToken";
 
+	/**
+	 * Cookie name that holds the access token. Bound from {@code auth.token.header};
+	 * defaults to {@code Authorization}.
+	 */
 	@Value("${auth.token.header:Authorization}")
 	private String authTokenHeader;
 	
+	/**
+	 * Configured Keycloak locale cookie name. Bound from {@code iam.locale.cookie.name};
+	 * defaults to {@code KEYCLOAK_LOCALE}.
+	 */
 	@Value("${iam.locale.cookie.name:KEYCLOAK_LOCALE}")
 	private String localeCookieName;
 	
+	/**
+	 * Path of the Keycloak locale cookie. Bound from
+	 * {@code iam.locale.cookie.name} (same property key as {@link #localeCookieName})
+	 * with default {@code /auth/realms/}.
+	 */
 	@Value("${iam.locale.cookie.name:/auth/realms/}")
 	private String localeCookiePath;
 	
 	
+	/**
+	 * Allow-listed post-login / post-logout redirect URLs, split from the comma-separated
+	 * {@code auth.allowed.urls} property. Entries may be exact URLs or Ant path patterns.
+	 */
 	@Value("#{'${auth.allowed.urls}'.split(',')}")
 	private List<String> allowedUrls;
 
+	/**
+	 * Authorization-code flow service used to build Keycloak URLs, exchange codes, and
+	 * create token cookies.
+	 */
 	@Autowired
 	private LoginServiceV2 loginService;
 	
+	/**
+	 * Offline JWT validator (expiry, issuer host, JWKS signature, audience/AZP).
+	 */
 	@Autowired
 	private ValidateTokenUtil validateTokenHelper;
 
+	/**
+	 * Spring environment used to resolve ID-token cookie name and subject claim name.
+	 */
 	@Autowired
 	private Environment environment;
 
+	/**
+	 * When {@code true}, the login-redirect also validates the OIDC ID token, checks that
+	 * its subject matches the access-token subject, and sets an ID-token cookie.
+	 * Bound from {@code auth.validate.id-token}; defaults to {@code false}.
+	 */
 	@Value("${auth.validate.id-token:false}")
 	private boolean validateIdToken;
 	
+	/**
+	 * Matcher used when an allow-list entry is an Ant-style pattern rather than an exact URL.
+	 */
 	@Autowired
 	private AntPathMatcher antPathMatcher;
 	
@@ -74,6 +129,21 @@ public class LoginController {
 	@Value("${mosip.iam.logout.offline:false}")
 	private boolean offlineLogout;
 
+	/**
+	 * Starts the OAuth 2.0 authorization-code flow without a UI locale hint.
+	 * <p>
+	 * Delegates to {@link #login(String, String, String, String, HttpServletResponse)}
+	 * with {@code uiLocales} set to {@code null}.
+	 *
+	 * @param state cookie {@code state} value from a prior request, if present
+	 * @param redirectURI Base64-encoded application redirect URI used as the Keycloak
+	 *                    {@code redirect_uri} suffix
+	 * @param stateParam {@code state} query parameter; used when the cookie is empty
+	 * @param res HTTP response used to set the {@code state} cookie and issue a 302
+	 *            to the Keycloak authorization endpoint
+	 * @throws IOException if sending the redirect fails
+	 * @throws ServiceException if {@code state} is missing or is not a UUID
+	 */
 	@GetMapping(value = "/login/{redirectURI}")
 	public void login(@CookieValue(name = "state", required = false) String state,
 			@PathVariable("redirectURI") String redirectURI,
@@ -82,6 +152,23 @@ public class LoginController {
 		login(state, redirectURI, stateParam, null, res);
 	}
 
+	/**
+	 * Starts the OAuth 2.0 authorization-code flow (v2), optionally forwarding
+	 * {@code ui_locales} to Keycloak.
+	 * <p>
+	 * Resolves {@code state} from the cookie, then the query parameter. The value must be a
+	 * UUID. Builds the Keycloak authorization URL, stores {@code state} in a secure,
+	 * HTTP-only cookie at path {@code /}, and redirects (HTTP 302) to Keycloak.
+	 *
+	 * @param state cookie {@code state} value from a prior request, if present
+	 * @param redirectURI Base64-encoded application redirect URI used as the Keycloak
+	 *                    {@code redirect_uri} suffix
+	 * @param stateParam {@code state} query parameter; used when the cookie is empty
+	 * @param uiLocales optional OIDC {@code ui_locales} hint forwarded to Keycloak
+	 * @param res HTTP response used to set the {@code state} cookie and issue a 302
+	 * @throws IOException if sending the redirect fails
+	 * @throws ServiceException if {@code state} is missing or is not a UUID
+	 */
 	@SuppressWarnings({"java:S2092", "java:S3330"}) // added suppress for sonarcloud. The secure flag, httpOnly flag is set to true through setCookieParams method. Line # 111.
 	@GetMapping(value = "/login/v2/{redirectURI}")
 	public void login(@CookieValue(name = "state", required = false) String state,
@@ -114,6 +201,28 @@ public class LoginController {
 		res.sendRedirect(uri);
 	}
 
+	/**
+	 * Completes the OAuth 2.0 authorization-code callback from Keycloak.
+	 * <p>
+	 * When {@code error} is empty, exchanges {@code code} for tokens (after CSRF
+	 * {@code state} matching), validates the access token via JWKS, and sets the
+	 * Authorization cookie. When {@link #validateIdToken} is enabled, also validates the
+	 * ID token, requires matching {@code sub} claims, and sets the ID-token cookie.
+	 * Always 302-redirects to the Base64-decoded {@code redirectURI} after allow-list
+	 * checks; IdP {@code error} values are appended as a query parameter.
+	 *
+	 * @param redirectURI Base64-encoded application URL to redirect to after the callback
+	 * @param state OAuth 2.0 {@code state} returned by Keycloak
+	 * @param sessionState OIDC {@code session_state} from Keycloak (accepted, unused here)
+	 * @param code authorization code to exchange at the token endpoint
+	 * @param error Keycloak error code when the authorization request failed
+	 * @param stateCookie {@code state} cookie set at login, compared with {@code state}
+	 * @param req current HTTP request
+	 * @param res HTTP response used to set token cookies and issue the 302
+	 * @throws IOException if sending the redirect fails
+	 * @throws ClientException if the ID token is missing or {@code sub} claims do not match
+	 * @throws ServiceException if the decoded redirect URL is not allow-listed
+	 */
 	@SuppressWarnings({"javasecurity:S5146", "java:S2092", "java:S3330"}) // added suppress for sonarcloud. The URLs whitelisting with the configured value in properties. Line # 156.
 	// The secure flag, httpOnly flag is set to true through setCookieParams method. Line # 151.
 	@GetMapping(value = "/login-redirect/{redirectURI}")
@@ -169,6 +278,13 @@ public class LoginController {
 
 
 
+	/**
+	 * Returns whether {@code url} is allow-listed: exact match (fragment stripped) against
+	 * {@link #allowedUrls}, or Ant-style match via {@link #antPathMatcher}.
+	 *
+	 * @param url decoded redirect URL to check
+	 * @return {@code true} if the URL is permitted
+	 */
 	private boolean matchesAllowedUrls(String url) {
 		boolean hasMatch = allowedUrls.contains(url.contains("#") ? url.split("#")[0] : url);
 		if(!hasMatch) {		
@@ -179,12 +295,32 @@ public class LoginController {
 		return hasMatch;
 	}
 
+	/**
+	 * Applies {@code HttpOnly}, {@code Secure}, and path attributes on a cookie.
+	 *
+	 * @param idTokenCookie cookie to mutate
+	 * @param isHttpOnly whether the cookie is HTTP-only
+	 * @param isSecure whether the cookie is marked Secure
+	 * @param path cookie path (typically {@code /})
+	 */
 	private void setCookieParams(Cookie idTokenCookie, boolean isHttpOnly, boolean isSecure,String path) {
 		idTokenCookie.setHttpOnly(isHttpOnly);
 		idTokenCookie.setSecure(isSecure);
 		idTokenCookie.setPath(path);
 	}
 
+	/**
+	 * Validates the access token from the Authorization cookie and refreshes that cookie.
+	 * <p>
+	 * When {@code auth.server.admin.validate.url} is set, validation is delegated to the
+	 * auth manager; otherwise {@link ValidateTokenUtil} performs offline JWKS validation.
+	 *
+	 * @param request HTTP request whose cookies must contain the access token
+	 * @param res HTTP response used to re-issue the Authorization cookie
+	 * @return MOSIP {@link ResponseWrapper} whose {@code response} is a {@code MosipUserDto}
+	 *         (online) or the string {@code TOKEN_VALID} (offline)
+	 * @throws ClientException if cookies are missing or the Authorization cookie is absent
+	 */
 	@ResponseFilter
 	@GetMapping(value = "/authorize/admin/validateToken")
 	public ResponseWrapper<?> validateAdminToken(HttpServletRequest request, HttpServletResponse res) {
@@ -214,6 +350,20 @@ public class LoginController {
 		return responseWrapper;
 	}
 	
+	/**
+	 * Logs the user out and 302-redirects to an allow-listed URL.
+	 * <p>
+	 * {@code redirecturi} is Base64-decoded and must match {@link #allowedUrls}. Online
+	 * logout builds Keycloak's OpenID Connect end-session URL from the token issuer.
+	 * Offline logout ({@link #offlineLogout}) expires the Authorization cookie (and the
+	 * ID-token cookie when {@link #validateIdToken} is true) without calling the IdP.
+	 *
+	 * @param token Authorization cookie value (access token)
+	 * @param redirectURI Base64-encoded post-logout redirect URI
+	 * @param res HTTP response used to expire cookies (offline) and issue the 302
+	 * @throws IOException if sending the redirect fails
+	 * @throws ServiceException if the decoded redirect URL is not allow-listed
+	 */
 	@SuppressWarnings({"javasecurity:S5146", "java:S2092", "java:S3330"}) // added suppress for sonarcloud. The URLs whitelisting with the configured value in properties. Line # 221.
 	// The secure flag, httpOnly flag is set to true through setCookieParams method. Line # 240.
 	@ResponseFilter

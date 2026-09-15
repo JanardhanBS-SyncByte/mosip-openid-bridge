@@ -47,6 +47,10 @@ import io.mosip.kernel.core.http.ResponseWrapper;
 import io.mosip.kernel.core.util.StringUtils;
 
 /**
+ * Loads individual/UIN details from ID repository for OTP send and validate.
+ * Uses {@link UriComponentsBuilder#fromUriString} and {@code getStatusCode().value()}
+ * for 401/403 mapping. Do not use {@code DateUtils}; this class uses ID-repo HTTP only.
+ *
  * @author M1049825
  *
  */
@@ -54,22 +58,40 @@ import io.mosip.kernel.core.util.StringUtils;
 @Component
 public class UinServiceImpl implements UinService {
 
+	/**
+	 * RestTemplate for ID repository.
+	 */
 	@Qualifier("authRestTemplate")
 	@Autowired
 	private RestTemplate restTemplate;
 
+	/**
+	 * ID repository get-UIN-details URL.
+	 */
 	@Autowired
 	MosipEnvironment env;
 
+	/**
+	 * Notification-type configuration ({@link #MOSIP_NOTIFICATIONTYPE}).
+	 */
 	@Autowired
 	Environment en;
 
+	/**
+	 * Mapper for MOSIP response wrappers.
+	 */
 	@Autowired
 	private ObjectMapper mapper;
 
+	/**
+	 * IDA client-credentials token used to call ID repository.
+	 */
 	@Autowired
 	private TokenGenerationService tokenService;
 
+	/**
+	 * Property key for configured notification channels.
+	 */
 	public static final String MOSIP_NOTIFICATIONTYPE = "mosip.notificationtype";
 
 	/*
@@ -95,7 +117,7 @@ public class UinServiceImpl implements UinService {
 		headers.set(AuthConstant.COOKIE, AuthConstant.AUTH_HEADER + token);
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), otpUser.getUserId());
 		ResponseEntity<String> response = null;
-		String url = UriComponentsBuilder.fromHttpUrl(env.getUinGetDetailsUrl()).buildAndExpand(uriParams)
+		String url = UriComponentsBuilder.fromUriString(env.getUinGetDetailsUrl()).buildAndExpand(uriParams)
 				.toUriString();
 		try {
 			response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), String.class);
@@ -131,7 +153,7 @@ public class UinServiceImpl implements UinService {
 		} catch (HttpClientErrorException | HttpServerErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
@@ -139,7 +161,7 @@ public class UinServiceImpl implements UinService {
 							"Authentication failed from UIN services " + ex.getResponseBodyAsString());
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -157,6 +179,14 @@ public class UinServiceImpl implements UinService {
 		return mosipDto;
 	}
 
+	/**
+	 * Loads UIN details for OTP validation and checks phone/email against
+	 * {@code mosip.notificationtype}.
+	 *
+	 * @param uin unique identification number
+	 * @return MOSIP user for OTP validation
+	 * @throws Exception if ID repository lookup fails
+	 */
 	@Override
 	public MosipUserDto getDetailsForValidateOtp(String uin) throws Exception {
 		String token = null;
@@ -173,7 +203,7 @@ public class UinServiceImpl implements UinService {
 		headers.set(AuthConstant.COOKIE, AuthConstant.AUTH_HEADER + token);
 		uriParams.put(AuthConstant.APPTYPE_UIN.toLowerCase(), uin);
 		ResponseEntity<String> response = null;
-		String url = UriComponentsBuilder.fromHttpUrl(env.getUinGetDetailsUrl()).buildAndExpand(uriParams)
+		String url = UriComponentsBuilder.fromUriString(env.getUinGetDetailsUrl()).buildAndExpand(uriParams)
 				.toUriString();
 		try {
 			response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<Object>(headers), String.class);
@@ -216,7 +246,7 @@ public class UinServiceImpl implements UinService {
 		} catch (HttpClientErrorException | HttpServerErrorException ex) {
 			List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(ex.getResponseBodyAsString());
 
-			if (ex.getRawStatusCode() == 401) {
+			if (ex.getStatusCode().value() == 401) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthNException(validationErrorsList);
 				} else {
@@ -224,7 +254,7 @@ public class UinServiceImpl implements UinService {
 							"Authentication failed from UIN services " + ex.getResponseBodyAsString());
 				}
 			}
-			if (ex.getRawStatusCode() == 403) {
+			if (ex.getStatusCode().value() == 403) {
 				if (!validationErrorsList.isEmpty()) {
 					throw new AuthZException(validationErrorsList);
 				} else {
@@ -242,6 +272,12 @@ public class UinServiceImpl implements UinService {
 		return mosipDto;
 	}
 
+	/**
+	 * Ensures phone/email from ID repository exist for requested OTP channels.
+	 *
+	 * @param res         ID-repo identity map (phone/email)
+	 * @param channelList requested OTP channels
+	 */
 	private void validate(Map<String, String> res, List<String> channelList) {
 		String notficationType = en.getProperty(MOSIP_NOTIFICATIONTYPE);
 		if(notficationType == null) {
@@ -267,6 +303,12 @@ public class UinServiceImpl implements UinService {
 
 	}
 
+	/**
+	 * Ensures {@code mosip.notificationtype} includes SMS/email for requested channels.
+	 *
+	 * @param notifyList  configured notification types
+	 * @param channelList requested OTP channels
+	 */
 	private void validateConfigChannel(List<String> notifyList, List<String> channelList) {
 		if ((!notifyList.contains(AuthConstant.SMS_NOTIFYTYPE) && !notifyList.contains(AuthConstant.EMAIL_NOTIFYTYPE))
 				&& (channelList.contains(AuthConstant.PHONE) && channelList.contains(AuthConstant.EMAIL))) {

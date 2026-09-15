@@ -16,9 +16,9 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -39,56 +39,84 @@ import io.mosip.kernel.core.authmanager.model.MosipUserListDto;
 import io.mosip.kernel.core.authmanager.model.RIdDto;
 import io.mosip.kernel.core.authmanager.model.RolesListDto;
 
+/**
+ * Tests {@link KeycloakImpl} role listing, user listing/search, RID, and
+ * individual-id lookup against a mocked {@code keycloakRestTemplate}.
+ * <p>
+ * Uses Boot 4 {@link AutoConfigureMockMvc} from
+ * {@code org.springframework.boot.webmvc.test.autoconfigure} and
+ * {@link MockitoBean} for the Keycloak RestTemplate.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 @AutoConfigureMockMvc
 public class KeycloakImplTest {
 
-	@MockBean
+	/** Keycloak RestTemplate replaced with a Mockito bean. */
+	@MockitoBean
 	@Qualifier("keycloakRestTemplate")
 	private RestTemplate restTemplate;
 
+	/** Auth util from the test context. */
 	@Autowired
 	private AuthUtil authUtil;
 
+	/** JSON mapper from the test context. */
 	@Autowired
 	private ObjectMapper objectMapper;
 
+	/** Keycloak IAM repository under test. */
 	@Autowired
 	private KeycloakImpl keycloakImpl;
 
+	/** Keycloak roles extension URL from test properties. */
 	@Value("${mosip.iam.roles-extn-url}")
 	private String roles;
 
+	/** Keycloak users extension URL from test properties. */
 	@Value("${mosip.iam.users-extn-url}")
 	private String users;
 
+	/** Keycloak role-user mapping URL from test properties. */
 	@Value("${mosip.iam.role-user-mapping-url}")
 	private String roleUserMappingurl;
 
+	/** Keycloak realm operations base URL from test properties. */
 	@Value("${mosip.iam.realm.operations.base-url}")
 	private String keycloakBaseUrl;
 
+	/** Keycloak admin URL from test properties. */
 	@Value("${mosip.iam.admin-url}")
 	private String keycloakAdminUrl;
 
+	/** Keycloak admin realm id from test properties. */
 	@Value("${mosip.iam.admin-realm-id}")
 	private String adminRealmId;
 
+	/** Max users fetched from Keycloak. */
 	@Value("${mosip.keycloak.max-no-of-users:100}")
 	private String maxUsers;
 
+	/** Keycloak role-based user URL from test properties. */
 	@Value("${mosip.iam.role-based-user-url}")
 	private String roleBasedUsersurl;
 
 //	restTemplate.exchange(url, httpMethod, requestEntity, String.class);
 
+	/**
+	 * Injects a mocked JDBC template into {@link KeycloakImpl}.
+	 */
 	@Before
 	public void init() {
 		NamedParameterJdbcTemplate jdbcTemplate = Mockito.mock(NamedParameterJdbcTemplate.class);
 		ReflectionTestUtils.setField(keycloakImpl, "jdbcTemplate", jdbcTemplate);
 	}
 
+	/**
+	 * Asserts getAllRoles parses the Keycloak roles JSON into {@link RolesListDto}.
+	 *
+	 * @throws Exception if the call fails
+	 */
 	@Test
 	public void getAllRolesTest() throws Exception {
 
@@ -104,6 +132,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getAllRoles raises AuthManagerException on malformed JSON.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getAllRolesIOExceptionTest() throws Exception {
 
 		Map<String, String> pathParams = new HashMap<>();
@@ -118,6 +151,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test
+	/**
+	 * Asserts getListOfUsersDetails returns mapped users from Keycloak.
+	 *
+	 * @throws Exception if the call fails
+	 */
 	public void getListOfUsersDetailsTest() throws Exception {
 
 		// arrange
@@ -167,6 +205,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getListOfUsersDetails raises AuthManagerException on malformed JSON.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getListOfUsersDetailsIOExceptionTest() throws Exception {
 
 		// Arrange: realm path
@@ -197,6 +240,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test
+	/**
+	 * Asserts getRidFromUserId returns the RID from Keycloak user attributes.
+	 *
+	 * @throws Exception if the call fails
+	 */
 	public void getRidFromUserIdTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user\",\"attributes\":{\"rid\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -211,6 +259,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getRidFromUserId raises AuthManagerException when the response is null.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getRidFromUserIdNullRespTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user\",\"attributes\":{\"rid\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -225,6 +278,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getRidFromUserId raises AuthManagerException when the user is missing.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getRidFromUserIdUserNotFoundTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user1\",\"attributes\":{\"rid\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -239,6 +297,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getRidFromUserId raises AuthManagerException on malformed JSON.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getRidFromUserIdIOExpTest() throws Exception {
 		String userIDResp = "[\"username\": \"mock-user\",\"attributes\":{\"rid\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -308,6 +371,11 @@ public class KeycloakImplTest {
 	 */
 
 	@Test
+	/**
+	 * Asserts getIndividualIdFromUserId returns the individual id attribute.
+	 *
+	 * @throws Exception if the call fails
+	 */
 	public void getIndividualIdFromUserIdTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user\",\"attributes\":{\"individualId\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -322,6 +390,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getIndividualIdFromUserId raises AuthManagerException when the user is missing.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getIndividualIdFromUserIdAuthManagerExceptionTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user1\",\"attributes\":{\"individualId\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -336,6 +409,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getIndividualIdFromUserId raises AuthManagerException on malformed JSON.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getIndividualIdFromUserIdIOTest() throws Exception {
 		String userIDResp = "[\"username\": \"mock-user\",\"attributes\":{\"individualId\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -350,6 +428,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts getIndividualIdFromUserId raises AuthManagerException when the response is null.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getIndividualIdFromUserIdNullRespTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user1\",\"attributes\":{\"individualId\":[\"8291930201\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -364,6 +447,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test
+	/**
+	 * Asserts user search by text returns matching Keycloak users.
+	 *
+	 * @throws Exception if the call fails
+	 */
 	public void getListOfUsersDetailsSearchTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user\",\"email\": \"mock@mosip.io\",\"firstName\": \"fname\",\"lastName\": \"lname\",\"id\": \"829329\",\"attributes\":{\"mobile\":[\"8291930201\"],\"rid\":[\"728391\"],\"name\":[\"mock-name\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -397,6 +485,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test
+	/**
+	 * Asserts user search by role returns matching Keycloak users.
+	 *
+	 * @throws Exception if the call fails
+	 */
 	public void getListOfUsersDetailsRoleSearchTest() throws Exception {
 		String userIDResp = "[{\"username\": \"mock-user\",\"email\": \"mock@mosip.io\",\"firstName\": \"fname\",\"lastName\": \"lname\",\"id\": \"829329\",\"attributes\":{\"mobile\":[\"8291930201\"],\"rid\":[\"728391\"],\"name\":[\"mock-name\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();
@@ -427,6 +520,11 @@ public class KeycloakImplTest {
 	}
 
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts role-based user search raises AuthManagerException on malformed JSON.
+	 *
+	 * @throws Exception if the call fails unexpectedly
+	 */
 	public void getListOfUsersDetailsRoleSearchIoExceptionTest() throws Exception {
 		String userIDResp = "[\"username\": \"mock-user\",\"email\": \"mock@mosip.io\",\"firstName\": \"fname\",\"lastName\": \"lname\",\"id\": \"829329\",\"attributes\":{\"mobile\":[\"8291930201\"],\"rid\":[\"728391\"],\"name\":[\"mock-name\"]} }]";
 		Map<String, String> pathParams = new HashMap<>();

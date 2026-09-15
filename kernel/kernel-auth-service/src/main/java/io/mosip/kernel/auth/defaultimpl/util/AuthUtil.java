@@ -10,11 +10,13 @@ import io.mosip.kernel.auth.defaultimpl.exception.AuthManagerException;
 
 /**
  * The Class AuthUtil.
+ * Maps MOSIP application ids to Keycloak realm ids via
+ * {@code mosip.kernel.auth.appid-realm-map}.
  */
 @Component
 public class AuthUtil {
 
-	/** The propertyname. */
+	/** The propertyname. Keycloak realm per MOSIP app id. */
 	@Value("#{${mosip.kernel.auth.appid-realm-map}}")
 	private Map<String, String> propertyname;
 
@@ -23,7 +25,8 @@ public class AuthUtil {
 	 *
 	 * @param appId
 	 *            the app id
-	 * @return the realm id from app id
+	 * @return the realm id from app id (lower-cased)
+	 * @throws AuthManagerException if {@code appId} is not in the realm map
 	 */
 	public String getRealmIdFromAppId(String appId) {
 		String realmId = null;

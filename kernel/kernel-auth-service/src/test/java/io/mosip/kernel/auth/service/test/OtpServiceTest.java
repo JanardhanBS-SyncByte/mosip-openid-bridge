@@ -16,9 +16,9 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -53,72 +53,106 @@ import io.mosip.kernel.core.authmanager.model.MosipUserDto;
 import io.mosip.kernel.core.authmanager.model.OtpUser;
 import io.mosip.kernel.core.http.ResponseWrapper;
 
+/**
+ * Tests {@link OTPService} send-OTP for UIN and userid, mapping IAM/OTP HTTP
+ * 401/403/400 and MOSIP error payloads to AuthN/AuthZ/AuthManager exceptions,
+ * plus blocked-user status.
+ * <p>
+ * Uses Boot 4 {@link AutoConfigureMockMvc} from
+ * {@code org.springframework.boot.webmvc.test.autoconfigure} and
+ * {@link MockitoBean} for RestTemplate, OTP generate, and template util.
+ */
 @SpringBootTest(classes = { AuthTestBootApplication.class })
 @RunWith(SpringRunner.class)
 @AutoConfigureMockMvc
 public class OtpServiceTest {
 	
+	/** OTP service under test. */
 	@Autowired
 	private OTPService oTPService;
 
+	/** Auth RestTemplate replaced with a Mockito bean. */
 	@Qualifier("authRestTemplate")
-	@MockBean
+	@MockitoBean
 	RestTemplate authRestTemplate;
 
+	/** MOSIP environment URLs used to build OTP and token APIs. */
 	@Autowired
 	MosipEnvironment mosipEnvironment;
 
-	@MockBean
+	/** OTP generate collaborator replaced with a Mockito bean. */
+	@MockitoBean
 	OTPGenerateService oTPGenerateService;
 
+	/** JSON mapper from the test context. */
 	@Autowired
 	private ObjectMapper mapper;
 
-	@MockBean
+	/** Email/SMS template helper replaced with a Mockito bean. */
+	@MockitoBean
 	private TemplateUtil templateUtil;
 
+	/** OTP request validator from the test context. */
 	@Autowired
 	private OtpValidator authOtpValidator;
 
+	/** Keycloak OpenID base URL from test properties. */
 	@Value("${mosip.iam.open-id-url}")
 	private String keycloakOpenIdUrl;
 
+	/** Default Keycloak realm id from test properties. */
 	@Value("${mosip.iam.default.realm-id}")
 	private String realmId;
 
+	/** Auth-manager client id from test properties. */
 	@Value("${mosip.kernel.auth.client.id}")
 	private String authClientID;
 
+	/** Prereg client id from test properties. */
 	@Value("${mosip.kernel.prereg.client.id}")
 	private String preregClientId;
 
+	/** Prereg client secret from test properties. */
 	@Value("${mosip.kernel.prereg.secret.key}")
 	private String preregSecretKey;
 
+	/** Auth-manager client secret from test properties. */
 	@Value("${mosip.kernel.auth.secret.key}")
 	private String authSecret;
 
+	/** IDA client id from test properties. */
 	@Value("${mosip.kernel.ida.client.id}")
 	private String idaClientID;
 
+	/** IDA client secret from test properties. */
 	@Value("${mosip.kernel.ida.secret.key}")
 	private String idaSecret;
 
+	/** Admin client id from test properties. */
 	@Value("${mosip.admin.clientid}")
 	private String mosipAdminClientID;
 
+	/** Admin client secret from test properties. */
 	@Value("${mosip.admin.clientsecret}")
 	private String mosipAdminSecret;
 
+	/** Prereg user password from test properties. */
 	@Value("${mosip.iam.pre-reg_user_password}")
 	private String preRegUserPassword;
 
+	/** Prereg realm id from test properties. */
 	@Value("${mosip.kernel.prereg.realm-id}")
 	private String preregRealmId;
 	
+	/** In-memory cache of access-token responses. */
 	@Autowired
 	private MemoryCache<String, AccessTokenResponse> memoryCache;
 	
+	/**
+	 * Asserts sendOTPForUin maps HTTP 401 KER-ATH-401 to {@link AuthNException}.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	@Test(expected = AuthNException.class)
 	public void sendOTPForUinAuthNExceptionTest() throws Exception  {
 		String resp = "{\r\n" + "  \"id\": \"string\", \"version\": \"string\",\r\n"
@@ -144,6 +178,11 @@ public class OtpServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts sendOTPForUin maps HTTP 401 plain body to AuthManagerException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	@Test(expected = AuthManagerException.class)
 	public void sendOTPForUinAuthManagerExceptionUnAuthTest() throws Exception  {
 		Map<String, String> pathParams = new HashMap<>();
@@ -166,6 +205,11 @@ public class OtpServiceTest {
 		
 	}
 	
+	/**
+	 * Asserts sendOTPForUin maps HTTP 403 KER-ATH-403 to AuthZException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	@Test(expected = AuthZException.class)
 	public void sendOTPForUinAuthZExceptionTest() throws Exception  {
 		String resp = "{\r\n" + "  \"id\": \"string\", \"version\": \"string\",\r\n"
@@ -192,6 +236,11 @@ public class OtpServiceTest {
 	}
 	
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts sendOTPForUin maps HTTP 403 plain body to AuthManagerException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPForUinAuthManagerExceptionForbiddenTest() throws Exception  {
 		Map<String, String> pathParams = new HashMap<>();
 		pathParams.put(AuthConstant.REALM_ID, "mosip");
@@ -216,6 +265,11 @@ public class OtpServiceTest {
 	
 
 	@Test(expected = AuthManagerServiceException.class)
+	/**
+	 * Asserts sendOTPForUin maps a MOSIP errors payload to AuthManagerServiceException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPForUinValidationErrorTest() throws Exception  {
 		String resp = "{\r\n" + "  \"id\": \"string\", \"version\": \"string\",\r\n"
 				+ "  \"responsetime\": \"2022-01-09T19:38:09.740Z\",\r\n" + "  \"metadata\": {},\r\n"
@@ -241,6 +295,11 @@ public class OtpServiceTest {
 	}
 	
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts sendOTPForUin maps HTTP 400 plain body to AuthManagerException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPForUinClientErrorTest() throws Exception  {
 		Map<String, String> pathParams = new HashMap<>();
 		pathParams.put(AuthConstant.REALM_ID, "mosip");
@@ -263,6 +322,11 @@ public class OtpServiceTest {
 	
 	
 	@Test
+	/**
+	 * Asserts sendOTPForUin returns blocked-user status when generate-OTP reports USER_BLOCKED.
+	 *
+	 * @throws Exception if the service call fails
+	 */
 	public void sendOTPForUinBlockedUserTest() throws Exception  {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");
@@ -294,6 +358,11 @@ public class OtpServiceTest {
 	
 	
 	@Test(expected = AuthNException.class)
+	/**
+	 * Asserts sendOTP maps HTTP 401 KER-ATH-401 to AuthNException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPAuthNExceptionTest() throws Exception  {
 		String resp = "{\r\n" + "  \"id\": \"string\", \"version\": \"string\",\r\n"
 				+ "  \"responsetime\": \"2022-01-09T19:38:09.740Z\",\r\n" + "  \"metadata\": {},\r\n"
@@ -319,6 +388,11 @@ public class OtpServiceTest {
 	}
 	
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts sendOTP maps HTTP 401 plain body to AuthManagerException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPAuthManagerExceptionUnAuthTest() throws Exception  {
 		Map<String, String> pathParams = new HashMap<>();
 		pathParams.put(AuthConstant.REALM_ID, "preregistration");
@@ -341,6 +415,11 @@ public class OtpServiceTest {
 	}
 	
 	@Test(expected = AuthZException.class)
+	/**
+	 * Asserts sendOTP maps HTTP 403 KER-ATH-403 to AuthZException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPAuthZExceptionTest() throws Exception  {
 		String resp = "{\r\n" + "  \"id\": \"string\", \"version\": \"string\",\r\n"
 				+ "  \"responsetime\": \"2022-01-09T19:38:09.740Z\",\r\n" + "  \"metadata\": {},\r\n"
@@ -366,6 +445,11 @@ public class OtpServiceTest {
 	}
 	
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts sendOTP maps HTTP 403 plain body to AuthManagerException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPAuthManagerExceptionForbiddenTest() throws Exception  {
 		Map<String, String> pathParams = new HashMap<>();
 		pathParams.put(AuthConstant.REALM_ID, "preregistration");
@@ -390,6 +474,11 @@ public class OtpServiceTest {
 	
 
 	@Test(expected = AuthManagerServiceException.class)
+	/**
+	 * Asserts sendOTP maps a MOSIP errors payload to AuthManagerServiceException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPValidationErrorTest() throws Exception  {
 		String resp = "{\r\n" + "  \"id\": \"string\", \"version\": \"string\",\r\n"
 				+ "  \"responsetime\": \"2022-01-09T19:38:09.740Z\",\r\n" + "  \"metadata\": {},\r\n"
@@ -415,6 +504,11 @@ public class OtpServiceTest {
 	}
 	
 	@Test(expected = AuthManagerException.class)
+	/**
+	 * Asserts sendOTP maps HTTP 400 plain body to AuthManagerException.
+	 *
+	 * @throws Exception if the service call fails unexpectedly
+	 */
 	public void sendOTPClientErrorTest() throws Exception  {
 		Map<String, String> pathParams = new HashMap<>();
 		pathParams.put(AuthConstant.REALM_ID, "preregistration");
@@ -437,6 +531,11 @@ public class OtpServiceTest {
 	
 	
 	@Test
+	/**
+	 * Asserts sendOTP returns blocked-user status when generate-OTP reports USER_BLOCKED.
+	 *
+	 * @throws Exception if the service call fails
+	 */
 	public void sendOTPBlockedUserTest() throws Exception  {
 		AccessTokenResponse accessTokenResponse = new AccessTokenResponse();
 		accessTokenResponse.setAccess_token("MOCK-ACCESS-TOKEN");

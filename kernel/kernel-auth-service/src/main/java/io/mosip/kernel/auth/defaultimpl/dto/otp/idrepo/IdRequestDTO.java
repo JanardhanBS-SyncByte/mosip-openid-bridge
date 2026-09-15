@@ -5,7 +5,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * The Class IdRequestDTO.
+ * MOSIP {@link RequestWrapper} around an ID Repository {@link RequestDTO}
+ * used when calling ID repo for UIN-based identity lookup during OTP flows.
  *
  * @author Manoj SP
  */

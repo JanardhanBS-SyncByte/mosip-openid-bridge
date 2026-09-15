@@ -5,7 +5,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * The Class IdResponseDTO.
+ * MOSIP {@link ResponseWrapper} around an ID Repository {@link ResponseDTO}
+ * returned from UIN identity lookup during OTP flows.
  *
  * @author Manoj SP
  */

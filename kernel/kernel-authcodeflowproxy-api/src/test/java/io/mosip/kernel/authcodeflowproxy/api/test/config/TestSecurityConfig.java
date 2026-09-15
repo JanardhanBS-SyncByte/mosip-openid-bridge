@@ -22,31 +22,63 @@ import org.springframework.web.client.RestTemplate;
 
 import jakarta.servlet.http.HttpServletResponse;
 
+/**
+ * Test {@link SecurityFilterChain} for auth-code-flow proxy tests: an empty
+ * chain (no request matchers), an in-memory user store with MOSIP roles, a
+ * permissive HTTP firewall, and a 401 entry point.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class TestSecurityConfig {
 
+	/**
+	 * RestTemplate used by proxy tests that need HTTP clients.
+	 *
+	 * @return a default RestTemplate
+	 */
 	@Bean
 	public RestTemplate restTemplate() {
 		return new RestTemplate();
 	}
 	
+	/**
+	 * Permissive firewall so encoded URL tests are not rejected.
+	 *
+	 * @return the default HTTP firewall
+	 */
 	@Bean
 	public HttpFirewall defaultHttpFirewall() {
 		return new DefaultHttpFirewall();
 	}
 
+	/**
+	 * Builds an unconfigured filter chain (defaults only).
+	 *
+	 * @param httpSecurity Spring Security HTTP builder
+	 * @return the built filter chain
+	 * @throws Exception if configuration fails
+	 */
 	@Bean
 	protected SecurityFilterChain configure(final HttpSecurity httpSecurity) throws Exception {
 		return httpSecurity.build();
 	}
 
+	/**
+	 * Sends HTTP 401 when authentication fails.
+	 *
+	 * @return the unauthorized entry point
+	 */
 	@Bean
 	public AuthenticationEntryPoint unauthorizedEntryPoint() {
 		return (request, response, authException) -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
 	}
 
+	/**
+	 * In-memory users covering registration, IDA, individual, and test roles.
+	 *
+	 * @return the test {@link UserDetailsService}
+	 */
 	@Bean
 	public UserDetailsService userDetailsService() {
 		List<UserDetails> users = new ArrayList<>();

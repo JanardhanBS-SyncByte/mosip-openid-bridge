@@ -55,23 +55,56 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import jakarta.annotation.PostConstruct;
 
+/**
+ * Vert.x {@link VertxAuthenticationProvider} implementation for MOSIP services
+ * that use Vert.x HTTP rather than Spring MVC.
+ * <p>
+ * Token validation is delegated to {@link VertxTokenValidationHelper}. Vert.x
+ * 3.9.16 remains a provided dependency. Optional SSL bypass uses an anonymous
+ * {@link HostnameVerifier}.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
+ */
 @Lazy
 @Component
 public class VertxAuthHandler implements VertxAuthenticationProvider {
     
+    /**
+     * Load-balancing interceptor attached to {@link #restTemplate}.
+     */
     @Autowired
 	private RestTemplateInterceptor restInterceptor;
 	
+	/**
+	 * RestTemplate used by {@link VertxTokenValidationHelper}.
+	 */
 	private RestTemplate restTemplate = null;
 
+	/**
+	 * Offline/online token validator for Vert.x requests.
+	 */
 	@Autowired
 	private VertxTokenValidationHelper validationHelper;
 	
+	/**
+	 * Fallback user id when the routing context has no authenticated user.
+	 */
 	private static final String DEFAULTADMIN_MOSIP_IO = "defaultadmin@mosip.io";
 
+	/**
+	 * When {@code true}, the validation RestTemplate trusts all TLS certificates.
+	 */
 	@Value("${mosip.kernel.auth.adapter.ssl-bypass:true}")
 	private boolean sslBypass;
 	
+	/**
+	 * Builds {@link #restTemplate} with optional SSL bypass and
+	 * {@link RestTemplateInterceptor}.
+	 *
+	 * @throws KeyManagementException   if the SSL context cannot be initialized
+	 * @throws NoSuchAlgorithmException if the SSL context cannot be built
+	 * @throws KeyStoreException        if trust material cannot be loaded
+	 */
 	@SuppressWarnings("java:S5527") // added suppress for sonarcloud. 
 	@PostConstruct
 	void init() throws KeyManagementException, NoSuchAlgorithmException, KeyStoreException {
@@ -83,6 +116,14 @@ public class VertxAuthHandler implements VertxAuthenticationProvider {
 			SSLContext sslContext = org.apache.http.ssl.SSLContexts.custom()
 					.loadTrustMaterial(null, acceptingTrustStrategy).build();
 			SSLConnectionSocketFactory csf = new SSLConnectionSocketFactory(sslContext, new HostnameVerifier() {
+				/**
+				 * Always returns {@code true}; used only when {@code sslBypass} is enabled
+				 * for internal MOSIP service hostnames.
+				 *
+				 * @param arg0 unused hostname
+				 * @param arg1 unused SSL session
+				 * @return {@code true}
+				 */
 				public boolean verify(String arg0, SSLSession arg1) {
 					return true;
 				}
@@ -97,6 +138,13 @@ public class VertxAuthHandler implements VertxAuthenticationProvider {
 		restTemplate.setInterceptors(list);
 	}
 
+	/**
+	 * Installs OWASP-oriented security headers on every Vert.x route of
+	 * {@code httpServer}.
+	 *
+	 * @param httpServer the Vert.x HTTP server
+	 * @param vertx      the Vert.x instance used to create a router
+	 */
 	@Generated // coverage exclusion as this is a filter
 	@Override
     public void addCorsFilter(HttpServer httpServer, Vertx vertx) {
@@ -116,6 +164,15 @@ public class VertxAuthHandler implements VertxAuthenticationProvider {
 		httpServer.requestHandler(router);
 	}
 
+	/**
+	 * Registers a Vert.x route that validates the Authorization cookie and required
+	 * roles before calling {@code next}.
+	 *
+	 * @param router              the Vert.x router
+	 * @param path                route path
+	 * @param httpMethod          required HTTP method; must not be {@code null}
+	 * @param commaSepratedRoles  required roles, comma-separated
+	 */
 	@Generated // coverage exclusion as this is a filter
 	@Override
 	public void addAuthFilter(Router router, String path, HttpMethod httpMethod,
@@ -127,12 +184,27 @@ public class VertxAuthHandler implements VertxAuthenticationProvider {
 		});
 	}
 
+	/**
+	 * Validates the current {@link RoutingContext} cookie and roles without
+	 * registering a new route.
+	 *
+	 * @param routingContext     the current Vert.x routing context
+	 * @param commaSepratedRoles required roles, comma-separated
+	 */
 	@Generated // coverage exclusion as this is a filter
 	@Override
 	public void addAuthFilter(RoutingContext routingContext, String commaSepratedRoles) {
 		tokenValidation(routingContext, commaSepratedRoles);
 	}
 
+	/**
+	 * Validates roles and token, then echoes the token as {@code Set-Cookie} and
+	 * continues the route.
+	 *
+	 * @param routingContext     the current Vert.x routing context
+	 * @param commaSepratedRoles required roles, comma-separated
+	 * @throws AuthManagerException if roles are empty or validation fails
+	 */
 	private void tokenValidation(RoutingContext routingContext, String commaSepratedRoles) {
 		try {
 			if (EmptyCheckUtils.isNullEmpty(commaSepratedRoles)) {
@@ -152,6 +224,22 @@ public class VertxAuthHandler implements VertxAuthenticationProvider {
 		}
 	}
 
+	/**
+	 * Runs {@link VertxTokenValidationHelper}, stores {@link MosipUserDto} on the
+	 * routing context, and sets Spring {@link SecurityContextHolder}.
+	 *
+	 * @param routingContext the current Vert.x routing context
+	 * @param roles          required roles
+	 * @return the validated token, or empty when validation wrote an error
+	 * @throws RestClientException     if remote validation fails
+	 * @throws KeyManagementException  unused; retained from historical signature
+	 * @throws NoSuchAlgorithmException unused; retained from historical signature
+	 * @throws KeyStoreException       unused; retained from historical signature
+	 * @throws JsonParseException      if the error body cannot be parsed
+	 * @throws JsonMappingException    if the error body cannot be mapped
+	 * @throws JsonProcessingException if the error body cannot be written
+	 * @throws IOException             if I/O fails during validation
+	 */
 	private String validateToken(RoutingContext routingContext, String[] roles)
 			throws RestClientException, KeyManagementException, NoSuchAlgorithmException, KeyStoreException,
 			JsonParseException, JsonMappingException, JsonProcessingException, IOException {
@@ -170,6 +258,13 @@ public class VertxAuthHandler implements VertxAuthenticationProvider {
 		return mosipUserDto.getToken();
 	}
 
+	/**
+	 * Returns the authenticated user id from the routing context, or
+	 * {@link #DEFAULTADMIN_MOSIP_IO} when absent.
+	 *
+	 * @param routingContext the current Vert.x routing context
+	 * @return the user id
+	 */
 	@Override
 	public String getContextUser(RoutingContext routingContext) {
 		MosipUserDto mosipUser = routingContext.get(AuthAdapterConstant.ROUTING_CONTEXT_USER);

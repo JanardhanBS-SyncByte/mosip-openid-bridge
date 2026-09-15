@@ -4,21 +4,25 @@
 package io.mosip.kernel.auth.defaultimpl.constant;
 
 /**
+ * LDAP user-store error codes ({@code KER-ATH-10x}) retained for the
+ * historical LDAP IAM path.
+ *
  * @author Ramadurai Pandian
  *
  */
 public enum LDAPErrorCode {
 	/**
-	 * RESPONSE_PARSE_ERROR
+	 * LDAP leftover: bind or connection failure
 	 */
 	LDAP_CONNECTION_ERROR("KER-ATH-101", "Error while connecting ldap request,Please check credentials"),
 
 	/**
-	 * RESPONSE_PARSE_ERROR
+	 * LDAP leftover: request validation failure
 	 */
 	LDAP_PARSE_REQUEST_ERROR("KER-ATH-102", "Error while validating the ldap request"),
+
 	/**
-	 * Email not registered
+	 * LDAP leftover: unable to read user or role entries
 	 */
 	LDAP_ROLES_REQUEST_ERROR("KER-ATH-103", "Unable to fetch details from LDAP");
 

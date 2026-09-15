@@ -24,29 +24,71 @@ import io.mosip.kernel.auth.defaultadapter.helper.TokenValidationHelper;
 import io.mosip.kernel.auth.defaultadapter.model.TokenHolder;
 import reactor.core.publisher.Mono;
 /**
- * This class filters and renew auth client token.
- * 
- * @author Mahammed Taheer
+ * {@link WebClient} {@link ExchangeFilterFunction} that attaches the service's
+ * own client-credentials token and renews it after HTTP 401.
+ * <p>
+ * Downstream calls use {@code ExchangeFunction#exchange}. TokenHelper and
+ * ValidateTokenHelper use {@code exchangeToMono} for OIDC token and user-info
+ * calls. Cookie replacement uses remove-then-add because {@code HttpHeaders}
+ * no longer has a replace helper.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
  *
+ * @author Mahammed Taheer
  */
 public class SelfTokenExchangeFilterFunction implements ExchangeFilterFunction {
 
+    /**
+     * Logger for token-fetch failures.
+     */
     private static final Logger LOGGER = LoggerFactory.getLogger(SelfTokenExchangeFilterFunction.class);
     
+    /**
+     * OIDC client id, resolved per application name with a global fallback.
+     */
     private String clientID;
 
+	/**
+	 * OIDC client secret, resolved per application name with a global fallback.
+	 */
 	private String clientSecret;
 
+	/**
+	 * MOSIP application id used to look up the Keycloak realm.
+	 */
 	private String appID;
 
+	/**
+	 * Shared cache of the current client-credentials access token.
+	 */
 	private TokenHolder<String> cachedToken;
 	
+	/**
+	 * Obtains client-credentials tokens from the OIDC token endpoint.
+	 */
 	private TokenHelper tokenHelper;
 
+	/**
+	 * Online token validation used before renewing after HTTP 401.
+	 */
 	private TokenValidationHelper tokenValidationHelper;
 
+    /**
+     * WebClient used only to fetch and validate tokens (typically
+     * {@code plainWebClient}).
+     */
     private WebClient webClient;
 
+    /**
+     * Loads client credentials for {@code applName} and stores collaborators.
+     *
+     * @param environment           Spring environment for property lookup
+     * @param webClient             client used to request and validate tokens
+     * @param cachedToken           shared token cache
+     * @param tokenHelper           client-credentials token client
+     * @param tokenValidationHelper online token validator
+     * @param applName              first {@code spring.application.name} segment
+     */
     public SelfTokenExchangeFilterFunction(Environment environment, WebClient webClient,
                     TokenHolder<String> cachedToken, TokenHelper tokenHelper, TokenValidationHelper tokenValidationHelper,
                     String applName) {
@@ -59,6 +101,14 @@ public class SelfTokenExchangeFilterFunction implements ExchangeFilterFunction {
         this.tokenValidationHelper = tokenValidationHelper;
     }
 
+    /**
+     * Attaches the cached Authorization cookie, exchanges the request, and on
+     * HTTP 401 validates then renews the token and retries once.
+     *
+     * @param request the outbound client request
+     * @param next    the next exchange function in the WebClient filter chain
+     * @return a {@link Mono} of the client response
+     */
     @Override
     public Mono<ClientResponse> filter(ClientRequest request, ExchangeFunction next) {
         
@@ -94,13 +144,21 @@ public class SelfTokenExchangeFilterFunction implements ExchangeFilterFunction {
 		if (cookies != null && !cookies.isEmpty()) {
 			cookies = cookies.stream().filter(str -> !str.contains(AuthAdapterConstant.AUTH_HEADER)).collect(Collectors.toList());
 		}
-        request.headers().replace(AuthAdapterConstant.AUTH_HEADER_COOKIE, cookies);
+        request.headers().remove(AuthAdapterConstant.AUTH_HEADER_COOKIE);
+        if (cookies != null && !cookies.isEmpty()) {
+            cookies.forEach(cookie -> request.headers().add(AuthAdapterConstant.AUTH_HEADER_COOKIE, cookie));
+        }
         request.headers().add(AuthAdapterConstant.AUTH_HEADER_COOKIE,
                         AuthAdapterConstant.AUTH_HEADER + cachedToken.getToken());
         return next.exchange(request);
     }
 
-    // Updated to use common code to validate the token online.
+    /**
+     * Returns whether online user-info validation still accepts {@code authToken}.
+     *
+     * @param authToken the cached access token
+     * @return {@code true} if validation returned a user
+     */
 	private boolean isTokenValid(String authToken) {
 		return Objects.nonNull(tokenValidationHelper.doOnlineTokenValidation(authToken, webClient));
 	}

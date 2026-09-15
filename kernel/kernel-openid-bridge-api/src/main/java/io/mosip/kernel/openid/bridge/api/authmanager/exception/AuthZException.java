@@ -6,6 +6,8 @@ import io.mosip.kernel.core.exception.BaseUncheckedException;
 import io.mosip.kernel.core.exception.ServiceError;
 
 /**
+ * Unchecked authorization (AuthZ) failure that carries MOSIP
+ * {@link ServiceError} entries from token validation or access-denied paths.
  * 
  * @author Srinivasan
  *
@@ -23,6 +25,9 @@ public class AuthZException extends BaseUncheckedException {
 	private final List<ServiceError> list;
 
 	/**
+	 * Creates an AuthZ failure from MOSIP service errors (typically parsed from a
+	 * token-validation or access-denied response).
+	 *
 	 * @param list The error list.
 	 */
 	public AuthZException(List<ServiceError> list) {

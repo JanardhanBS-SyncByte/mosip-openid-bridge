@@ -8,6 +8,10 @@ import io.mosip.kernel.core.authmanager.model.LoginUser;
 import io.mosip.kernel.openid.bridge.api.service.AuthService;
 
 /**
+ * Inactive skeleton for {@link AuthController} login, OTP, client-secret, and
+ * token endpoints. Spring and JUnit annotations are commented out so these
+ * methods do not currently run.
+ *
  * //@author Ramadurai Pandian
  *
  */
@@ -15,14 +19,22 @@ import io.mosip.kernel.openid.bridge.api.service.AuthService;
 //@SpringBootTest(classes=AuthApp.class)
 public class AuthControllerTest {
 
+	/** Auth service collaborator (mock annotation commented out). */
 	// @Mock
 	private AuthService authService;
 
+	/** Controller under test (inject-mocks annotation commented out). */
 	// @InjectMocks
 	AuthController controller;
 
+	/** Login payload used by {@link #setUp()}. */
 	private LoginUser loginUser;
 
+	/**
+	 * Builds a preregistration {@link LoginUser} for username/password tests.
+	 *
+	 * @throws Exception if setup fails
+	 */
 	// @Before
 	public void setUp() throws Exception {
 		loginUser = new LoginUser();
@@ -33,9 +45,10 @@ public class AuthControllerTest {
 	}
 
 	/**
-	 * Test method for {//@link
-	 * io.mosip.kernel.auth.controller.AuthController#authenticateUseridPwd(io.mosip.kernel.auth.entities.LoginUser,
-	 * jakarta.servlet.http.HttpServletResponse)}. //@throws Exception
+	 * Would assert userid/password authenticate returns a token from
+	 * {@link AuthService}. Currently not executed ({@code @Test} commented out).
+	 *
+	 * @throws Exception if authenticate fails
 	 */
 	// @Test
 	public void testAuthenticateUseridPwd() throws Exception {
@@ -45,8 +58,7 @@ public class AuthControllerTest {
 	}
 
 	/**
-	 * Test method for {//@link
-	 * io.mosip.kernel.auth.controller.AuthController#sendOTP(io.mosip.kernel.auth.entities.otp.OtpUser)}.
+	 * Placeholder for send-OTP coverage. Currently not executed.
 	 */
 	// @Test
 	public void testSendOTP() {
@@ -54,9 +66,7 @@ public class AuthControllerTest {
 	}
 
 	/**
-	 * Test method for {//@link
-	 * io.mosip.kernel.auth.controller.AuthController#userIdOTP(io.mosip.kernel.auth.entities.UserOtp,
-	 * jakarta.servlet.http.HttpServletResponse)}.
+	 * Placeholder for userid+OTP authenticate coverage. Currently not executed.
 	 */
 	// @Test
 	public void testUserIdOTP() {
@@ -64,9 +74,8 @@ public class AuthControllerTest {
 	}
 
 	/**
-	 * Test method for {//@link
-	 * io.mosip.kernel.auth.controller.AuthController#clientIdSecretKey(io.mosip.kernel.auth.entities.ClientSecret,
-	 * jakarta.servlet.http.HttpServletResponse)}.
+	 * Placeholder for client-id/secret authenticate coverage. Currently not
+	 * executed.
 	 */
 	// @Test
 	public void testClientIdSecretKey() {
@@ -74,9 +83,7 @@ public class AuthControllerTest {
 	}
 
 	/**
-	 * Test method for {//@link
-	 * io.mosip.kernel.auth.controller.AuthController#validateToken(jakarta.servlet.http.HttpServletRequest,
-	 * jakarta.servlet.http.HttpServletResponse)}.
+	 * Placeholder for validate-token coverage. Currently not executed.
 	 */
 	// @Test
 	public void testValidateToken() {
@@ -84,9 +91,7 @@ public class AuthControllerTest {
 	}
 
 	/**
-	 * Test method for {//@link
-	 * io.mosip.kernel.auth.controller.AuthController#retryToken(jakarta.servlet.http.HttpServletRequest,
-	 * jakarta.servlet.http.HttpServletResponse)}.
+	 * Placeholder for retry-token coverage. Currently not executed.
 	 */
 	// @Test
 	public void testRetryToken() {
@@ -94,9 +99,7 @@ public class AuthControllerTest {
 	}
 
 	/**
-	 * Test method for {//@link
-	 * io.mosip.kernel.auth.controller.AuthController#invalidateToken(jakarta.servlet.http.HttpServletRequest,
-	 * jakarta.servlet.http.HttpServletResponse)}.
+	 * Placeholder for invalidate-token coverage. Currently not executed.
 	 */
 	// @Test
 	public void testInvalidateToken() {

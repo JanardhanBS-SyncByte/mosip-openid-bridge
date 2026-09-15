@@ -15,7 +15,14 @@ import io.mosip.kernel.openid.bridge.api.service.validator.ScopeValidator;
 import io.mosip.kernel.openid.bridge.model.AuthUserDetails;
 
 /**
- * Validator used to validate the scope in the token.
+ * {@link ScopeValidator} that reads OAuth scope authorities from the current
+ * {@link AuthUserDetails} (authorities prefixed with
+ * {@link AuthUserDetails#SCOPE_AUTHORITY_PREFIX}).
+ * <p>
+ * Hosting services use this bean as {@code @scopeValidator} in method-security
+ * expressions.
+ * <p>
+ * This adapter is a library other MOSIP services put on the classpath.
  *
  * @author Loganathan S
  */
