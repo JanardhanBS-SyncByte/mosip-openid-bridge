@@ -30,13 +30,13 @@ HTTP service: [`deploy/`](../deploy/README.md). Chart: [`helm/authmanager`](../h
 Local run with a profile:
 
 ```text
-java -Dspring.profiles.active=<profile> -jar kernel-auth-service-1.4.1-SNAPSHOT.jar
+java -Dspring.profiles.active=<profile> -jar kernel-auth-service-<$version>.jar
 ```
 
 Remote config:
 
 ```text
-java -Dspring.profiles.active=<profile> -Dspring.cloud.config.uri=<config-url> -Dspring.cloud.config.label=<config-label> -jar kernel-auth-service-1.4.1-SNAPSHOT.jar
+java -Dspring.profiles.active=<profile> -Dspring.cloud.config.uri=<config-url> -Dspring.cloud.config.label=<config-label> -jar kernel-auth-service-<$version>.jar
 ```
 
 See [`AGENTS.md`](AGENTS.md).

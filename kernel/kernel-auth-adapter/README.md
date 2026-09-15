@@ -27,7 +27,7 @@ Add the adapter to the host service:
 <dependency>
     <groupId>io.mosip.kernel</groupId>
     <artifactId>kernel-auth-adapter</artifactId>
-    <version>1.4.1-SNAPSHOT</version>
+    <version>$version</version>
 </dependency>
 ```
 

@@ -81,7 +81,7 @@ mvn clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 
 4. Start auth manager:
     - Click the Run button in your IDE on `io.mosip.kernel.auth.AuthBootApplication`, or
-    - Run via command: `java -jar kernel-auth-service/target/kernel-auth-service-1.4.1-SNAPSHOT.jar`
+    - Run via command: `java -jar kernel-auth-service/target/kernel-auth-service-<$version>.jar`
 
 5. Verify Swagger / health at `http://localhost:8091/v1/authmanager`.
 
@@ -92,7 +92,7 @@ mvn clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 Recommended for testers, students, and external users.
 
 ```text
-docker pull mosipid/kernel-auth-service:1.4.1-SNAPSHOT
+docker pull mosipid/kernel-auth-service:<$version>
 ```
 
 #### Option 2: Build Docker Images Locally

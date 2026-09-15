@@ -81,7 +81,7 @@ mvn -pl kernel-auth-service -am clean install -Dmaven.javadoc.skip=true "-Dgpg.s
 3. Start:
 
 ```text
-java -jar kernel-auth-service/target/kernel-auth-service-1.4.1-SNAPSHOT.jar
+java -jar kernel-auth-service/target/kernel-auth-service-<$version>.jar
 ```
 
 Or run `io.mosip.kernel.auth.AuthBootApplication` from the IDE.
@@ -91,7 +91,7 @@ Or run `io.mosip.kernel.auth.AuthBootApplication` from the IDE.
 Remote config:
 
 ```text
-java -Dspring.profiles.active=<profile> -Dspring.cloud.config.uri=<config-url> -Dspring.cloud.config.label=<config-label> -jar kernel-auth-service-1.4.1-SNAPSHOT.jar
+java -Dspring.profiles.active=<profile> -Dspring.cloud.config.uri=<config-url> -Dspring.cloud.config.label=<config-label> -jar kernel-auth-service-<$version>.jar
 ```
 
 ### Local Setup with Docker
@@ -99,7 +99,7 @@ java -Dspring.profiles.active=<profile> -Dspring.cloud.config.uri=<config-url> -
 #### Option 1: Pull from Docker Hub
 
 ```text
-docker pull mosipid/kernel-auth-service:1.4.1-SNAPSHOT
+docker pull mosipid/kernel-auth-service:<$version>
 ```
 
 #### Option 2: Build locally

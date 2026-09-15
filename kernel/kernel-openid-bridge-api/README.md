@@ -23,7 +23,7 @@ Parent: [`../README.md`](../README.md)
 <dependency>
     <groupId>io.mosip.kernel</groupId>
     <artifactId>kernel-openid-bridge-api</artifactId>
-    <version>1.4.1-SNAPSHOT</version>
+    <version>$version</version>
 </dependency>
 ```
 
