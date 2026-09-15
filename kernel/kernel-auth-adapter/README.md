@@ -17,7 +17,7 @@ Do not merge this module into `kernel-auth-service`. Spring Security 7 matchers:
 ## Prerequisites
 - **JDK:** 21
 - **Maven:** 3.9+
-- commons **`kernel-core` 1.4.1-SNAPSHOT** installed first
+- commons **`kernel-core`** installed first
 
 ## Usage
 

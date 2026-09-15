@@ -88,10 +88,6 @@
 		<vertx.version>3.9.16</vertx.version>
 		<!-- LDAP leftovers (PasswordUtil in KeycloakImpl). Source: https://central.sonatype.com/artifact/org.apache.directory.api/api-all -->
 		<apache.directory.api.version>2.1.8</apache.directory.api.version>
-
-		<!-- ── External commons library (not this reactor; do not use ${project.version}) ─ -->
-		<!-- logger + velocity templates live in commons kernel-core. Install that module first. -->
-		<kernel.core.version>1.4.1-SNAPSHOT</kernel.core.version>
 	</properties>
 
 	<dependencyManagement>
@@ -105,11 +101,11 @@
 				<scope>import</scope>
 			</dependency>
 
-			<!-- External commons kernel-core (not via kernel-bom) -->
+			<!-- External commons kernel-core (not via kernel-bom). Same release line as this reactor. -->
 			<dependency>
 				<groupId>io.mosip.kernel</groupId>
 				<artifactId>kernel-core</artifactId>
-				<version>${kernel.core.version}</version>
+				<version>${project.version}</version>
 			</dependency>
 			<!-- This reactor: children omit <version> so a reactor build uses the local JAR -->
 			<dependency>

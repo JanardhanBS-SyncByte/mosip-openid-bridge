@@ -22,7 +22,7 @@
 	</properties>
 
 	<dependencies>
-		<!-- ── commons kernel-core (external; version from parent kernel.core.version) ─ -->
+		<!-- ── commons kernel-core (external; version from parent ${project.version}) ─ -->
 		<dependency>
 			<groupId>io.mosip.kernel</groupId>
 			<artifactId>kernel-core</artifactId>

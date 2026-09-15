@@ -58,7 +58,7 @@ Identity is Keycloak. There are no MOSIP schema scripts in this module.
 - **Docker:** Latest (optional)
 - **Keycloak/IDP:** Required for a full run
 - **Config Server** with MOSIP property files
-- commons **`kernel-core` 1.4.1-SNAPSHOT** installed first
+- commons **`kernel-core`** installed first
 
 ### Configuration
 

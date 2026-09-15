@@ -15,7 +15,7 @@ Do not reintroduce `kernel-bom`. Pin versions on `kernel/pom.xml`. Boot 4 uses Z
 
 ### Build
 
-Install commons `kernel-core` **1.4.1-SNAPSHOT** first, then from `kernel/`:
+Install commons `kernel-core` first, then from `kernel/`:
 
 ```text
 mvn clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"

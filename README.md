@@ -37,7 +37,7 @@ Auth manager identity is Keycloak (or a compatible IAM). There are no MOSIP sche
 - **Docker:** Latest (optional, for container runs)
 - **Keycloak/IDP:** Required for a full auth-manager run
 - **Config Server** with the MOSIP property files
-- **commons `kernel-core` 1.4.1-SNAPSHOT** installed locally first
+- **commons `kernel-core`** installed locally first
 
 ### Runtime Dependencies
 
