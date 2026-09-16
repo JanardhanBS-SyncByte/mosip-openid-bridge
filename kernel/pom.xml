@@ -17,7 +17,7 @@
 	<packaging>pom</packaging>
 
 	<name>mosip-openid-bridge</name>
-	<description>Parent of MOSIP OpenID Bridge. No kernel-bom. Versions for all Java modules live here.</description>
+	<description>Parent of MOSIP OpenID Bridge.</description>
 	<url>https://github.com/mosip/mosip-openid-bridge</url>
 
 	<modules>
