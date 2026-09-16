@@ -80,8 +80,8 @@ Homepage: https://www.jacoco.org/
 
 ================================================================================
 Package: Git Commit ID Maven Plugin
-(io.github.git-commit-id:git-commit-id-maven-plugin)
-Version: 10.0.1
+(pl.project13.maven:git-commit-id-plugin)
+Version: 4.9.10
 License: GNU LGPL 3.0
 Homepage: https://github.com/git-commit-id/git-commit-id-maven-plugin
 ================================================================================
