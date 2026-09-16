@@ -9,7 +9,7 @@ Java parent. Infra → [root](../AGENTS.md).
 | `kernel-auth-adapter` | Spring Security adapter (Maven) |
 | `kernel-auth-service` | Authmanager · `:8091` · `/v1/authmanager` |
 
-Pins on `kernel/pom.xml`. Children inherit plugins. `kernel-core` + siblings: **no** `<version>`. ZIP layout, not `<executable>true`. Logger/velocity in `kernel-core`. Compiler **3.14.0** (not Boot 3.15).
+Pins on `kernel/pom.xml`. Children inherit plugins. `kernel-core` + siblings: **no** `<version>`. ZIP layout, not `<executable>true`. Logger/velocity in `kernel-core`. Compiler plugin: Maven **3.x** GA (not 4.x beta).
 
 **Keep:** `/v1/authmanager`, Keycloak IAM, `DateUtils2`, adapter filter chain. Spring 7: `fromUriString`; `getStatusCode().value()`; `APPLICATION_JSON`; Tomcat; `AnyRequestMatcher` + `PathPatternRequestMatcher` (`PathPatternSupport`; no `AntPathRequestMatcher`).
 

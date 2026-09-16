@@ -172,7 +172,7 @@ PostgreSQL JDBC Driver
 GNU LGPL 3.0 COMPONENTS
 --------------------------------------------------------------------------------
 
-Git Commit ID Maven Plugin (pl.project13.maven:git-commit-id-plugin)
+Git Commit ID Maven Plugin (io.github.git-commit-id:git-commit-id-maven-plugin)
   Copyright © 2010-2024 Konrad Malawski and Contributors
   Licensed under the GNU Lesser General Public License v3.0
 

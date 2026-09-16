@@ -38,19 +38,24 @@
 		<springdoc.openapi.version>3.1.1</springdoc.openapi.version>
 		<spring-boot-maven-plugin.version>4.1.1</spring-boot-maven-plugin.version>
 
-		<!-- ── Maven plugins & build tooling ───────────────────────────────── -->
+		<!-- ── Maven plugins & build tooling (Maven 3.9 + JDK 21; not 4.x plugin betas) ─ -->
 		<maven.jar.plugin.version>3.5.1</maven.jar.plugin.version>
 		<maven.war.plugin.version>3.5.1</maven.war.plugin.version>
 		<maven.surefire.plugin.version>3.6.0</maven.surefire.plugin.version>
 		<maven.jacoco.version>0.8.15</maven.jacoco.version>
-		<!-- Boot 4.1.1 manages compiler 3.15.0 (Maven 4 plugin descriptor). Pin 3.14.0 so Maven 3.9 and the IDE accept annotationProcessorPaths. -->
-		<maven-compiler-plugin.version>3.14.0</maven-compiler-plugin.version>
+		<!-- Latest 3.x GA. Compiler 4.x and Boot-managed 3.15.0 plugin descriptors are Maven 4. -->
+		<maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
 		<maven.sonar.plugin.version>5.8.0.7211</maven.sonar.plugin.version>
 		<maven.javadoc.version>3.12.0</maven.javadoc.version>
-		<maven.deploy.plugin.version>3.1.4</maven.deploy.plugin.version>
+		<maven.deploy.plugin.version>3.2.0</maven.deploy.plugin.version>
+		<maven.install.plugin.version>3.2.0</maven.install.plugin.version>
+		<maven.dependency.plugin.version>3.11.0</maven.dependency.plugin.version>
+		<maven.resources.plugin.version>3.5.0</maven.resources.plugin.version>
+		<maven.clean.plugin.version>3.5.0</maven.clean.plugin.version>
 		<maven.source.plugin.version>3.4.0</maven.source.plugin.version>
 		<maven.gpg.plugin.version>3.2.8</maven.gpg.plugin.version>
-		<git.commit.id.plugin.version>4.9.10</git.commit.id.plugin.version>
+		<!-- Successor of pl.project13.maven:git-commit-id-plugin. 10.x needs Maven 3.9+. -->
+		<git.commit.id.plugin.version>10.0.1</git.commit.id.plugin.version>
 		<!-- Source: https://central.sonatype.com/artifact/org.springdoc/springdoc-openapi-maven-plugin -->
 		<springdoc.openapi.maven.plugin.version>1.5</springdoc.openapi.maven.plugin.version>
 		<central.publishing.maven.plugin.version>0.11.0</central.publishing.maven.plugin.version>
@@ -218,6 +223,26 @@
 					<artifactId>sonar-maven-plugin</artifactId>
 					<version>${maven.sonar.plugin.version}</version>
 				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-dependency-plugin</artifactId>
+					<version>${maven.dependency.plugin.version}</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-install-plugin</artifactId>
+					<version>${maven.install.plugin.version}</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-clean-plugin</artifactId>
+					<version>${maven.clean.plugin.version}</version>
+				</plugin>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-resources-plugin</artifactId>
+					<version>${maven.resources.plugin.version}</version>
+				</plugin>
 			</plugins>
 		</pluginManagement>
 		<plugins>
@@ -357,8 +382,8 @@
 				</executions>
 			</plugin>
 			<plugin>
-				<groupId>pl.project13.maven</groupId>
-				<artifactId>git-commit-id-plugin</artifactId>
+				<groupId>io.github.git-commit-id</groupId>
+				<artifactId>git-commit-id-maven-plugin</artifactId>
 				<version>${git.commit.id.plugin.version}</version>
 				<executions>
 					<execution>
