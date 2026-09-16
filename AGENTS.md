@@ -1,13 +1,9 @@
 # mosip-openid-bridge
 
-JDK 21 · Maven 3.9+ · Boot **4.1.1**. `cd kernel && mvn clean install "-Dgpg.skip=true"`. No `kernel-bom`.
+JDK 21 · Maven 3.9+ · Boot in `kernel/pom.xml`. `cd kernel && mvn clean install "-Dgpg.skip=true"`.
 
-| Area | Guide |
-|------|-------|
-| Java | [`kernel/AGENTS.md`](kernel/AGENTS.md) |
-| Helm | [`helm/AGENTS.md`](helm/AGENTS.md) |
-| Install | [`deploy/AGENTS.md`](deploy/AGENTS.md) |
+[`kernel/`](kernel/AGENTS.md) · [`helm/`](helm/AGENTS.md) · [`deploy/`](deploy/AGENTS.md)
 
-Auth libs: `kernel-auth-adapter` + `kernel-openid-bridge-api` (Maven). `kernel-core` from commons (`mvn -pl kernel-core -am install "-Dgpg.skip=true"` there first).
+Adapter + `kernel-openid-bridge-api` (Maven). commons `kernel-core` first.
 
-**Do not:** `kernel-bom`; sibling `<version>` pins; `/v1/authmanager` without Helm/deploy; Boot `<executable>true` (ZIP only); `DateUtils` (use `DateUtils2`).
+**Don't:** `kernel-bom` · sibling `<version>` · `/v1/authmanager` sans Helm · `<executable>true` · `DateUtils`
