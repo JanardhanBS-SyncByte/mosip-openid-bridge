@@ -1,4 +1,5 @@
-# Global endpoints to access without authentication (Spring Security 7 PathPattern, relative to context path)
+# Global endpoints to access without authentication.
+# matching-strategy: PATH_PATTERN_PARSER (default) or ANT_PATH_MATCHER (Boot 3.4 Ant).
 mosip:
   global:
     end-points:

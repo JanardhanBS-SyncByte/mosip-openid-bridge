@@ -11,9 +11,9 @@ import lombok.Data;
  * Binds {@code mosip.global} and {@code mosip.service} no-auth path lists used
  * by {@link SecurityConfig} and {@link io.mosip.kernel.auth.defaultadapter.filter.AuthFilter}.
  * <p>
- * Patterns are stored as historical Ant-style strings. Spring Security 7
- * matchers are {@code AnyRequestMatcher} plus {@code PathPatternRequestMatcher};
- * {@link PathPatternSupport} converts these strings before they are applied.
+ * Patterns are stored as historical Ant-style strings. {@link PathPatternSupport}
+ * applies them with {@code spring.mvc.pathmatch.matching-strategy} (Ant or
+ * PathPattern), the same Boot 3.4 switch as MVC.
  * <p>
  * This adapter is a library other MOSIP services put on the classpath.
  *

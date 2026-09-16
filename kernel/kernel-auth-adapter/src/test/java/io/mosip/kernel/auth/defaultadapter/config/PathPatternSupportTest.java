@@ -7,10 +7,12 @@ import static org.junit.Assert.assertTrue;
 import java.lang.reflect.Constructor;
 
 import org.junit.Test;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 /**
- * Conversion and match behaviour of MOSIP Ant strings on Spring Security 7 PathPattern.
+ * Conversion and match behaviour for MOSIP path strings (PathPattern default,
+ * Ant when matching-strategy is ANT_PATH_MATCHER).
  */
 public class PathPatternSupportTest {
 
@@ -48,5 +50,49 @@ public class PathPatternSupportTest {
 		Constructor<PathPatternSupport> constructor = PathPatternSupport.class.getDeclaredConstructor();
 		constructor.setAccessible(true);
 		constructor.newInstance();
+	}
+
+	@Test
+	public void toAntPatternKeepsMiddleDoubleStar() {
+		assertEquals("/**", PathPatternSupport.toAntPattern(null));
+		assertEquals("/**", PathPatternSupport.toAntPattern("*"));
+		assertEquals("/api/**/details", PathPatternSupport.toAntPattern("api/**/details"));
+	}
+
+	@Test
+	public void isAntPathMatcherReadsBoot34Property() {
+		MockEnvironment env = new MockEnvironment();
+		assertFalse(PathPatternSupport.isAntPathMatcher(null));
+		assertFalse(PathPatternSupport.isAntPathMatcher(env));
+		env.setProperty(PathPatternSupport.MATCHING_STRATEGY_PROPERTY, "PATH_PATTERN_PARSER");
+		assertFalse(PathPatternSupport.isAntPathMatcher(env));
+		env.setProperty(PathPatternSupport.MATCHING_STRATEGY_PROPERTY, "ANT_PATH_MATCHER");
+		assertTrue(PathPatternSupport.isAntPathMatcher(env));
+		env.setProperty(PathPatternSupport.MATCHING_STRATEGY_PROPERTY, "ant_path_matcher");
+		assertTrue(PathPatternSupport.isAntPathMatcher(env));
+		env.setProperty(PathPatternSupport.MATCHING_STRATEGY_PROPERTY, "ant-path-matcher");
+		assertTrue(PathPatternSupport.isAntPathMatcher(env));
+	}
+
+	@Test
+	public void antModeMatchesDoubleStarInMiddle() {
+		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/a/details");
+		request.setServletPath("/api/a/details");
+		assertTrue(PathPatternSupport.matches(request, "/api/**/details", true));
+		assertFalse(PathPatternSupport.matches(request, "/api/**/details", false));
+		assertFalse(PathPatternSupport.matches(request, "/api/**/details"));
+	}
+
+	@Test
+	public void matchesUsesEnvironmentStrategy() {
+		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/a/details");
+		request.setServletPath("/api/a/details");
+		MockEnvironment env = new MockEnvironment();
+		env.setProperty(PathPatternSupport.MATCHING_STRATEGY_PROPERTY, "ANT_PATH_MATCHER");
+		assertTrue(PathPatternSupport.matches(request, "/api/**/details", env));
+		env.setProperty(PathPatternSupport.MATCHING_STRATEGY_PROPERTY, "PATH_PATTERN_PARSER");
+		assertFalse(PathPatternSupport.matches(request, "/api/**/details", env));
+		assertTrue(PathPatternSupport.requestMatcher("/api/**/details", true).matches(request));
+		assertFalse(PathPatternSupport.requestMatcher("/api/**/details", false).matches(request));
 	}
 }

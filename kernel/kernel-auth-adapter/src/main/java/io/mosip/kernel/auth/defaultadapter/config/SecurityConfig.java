@@ -36,6 +36,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.util.matcher.AnyRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import io.mosip.kernel.auth.defaultadapter.config.NoAuthenticationEndPoint.GlobalEndPoint;
 import io.mosip.kernel.auth.defaultadapter.config.NoAuthenticationEndPoint.ServiceEndPoint;
@@ -54,10 +55,11 @@ import jakarta.servlet.http.HttpServletResponse;
  * Builds a {@link ProviderManager} from optional extra
  * {@link AbstractUserDetailsAuthenticationProvider} beans plus
  * {@link AuthHandler}. {@link AuthFilter} matches {@link AnyRequestMatcher}
- * and then skips paths listed in {@link NoAuthenticationEndPoint} after
- * {@link PathPatternSupport} conversion (PathPattern, not Ant). CSRF and CORS
- * are optional via {@code mosip.security.csrf-enable} and
- * {@code mosip.security.cors-enable}.
+ * and then skips paths listed in {@link NoAuthenticationEndPoint}. Matching
+ * follows {@code spring.mvc.pathmatch.matching-strategy} like Boot 3.4:
+ * {@code ANT_PATH_MATCHER} uses Ant; {@code PATH_PATTERN_PARSER} (default)
+ * uses PathPattern. CSRF and CORS are optional via
+ * {@code mosip.security.csrf-enable} and {@code mosip.security.cors-enable}.
  *
  * @author Sabbu Uday Kumar
  * @author Ramadurai Saravana Pandian
@@ -187,10 +189,10 @@ public class SecurityConfig {
 	}
 
 	/**
-	 * Stateless Security 7 filter chain: optional CSRF, PathPattern permit-all
-	 * for no-auth endpoints, authenticated for everything else,
-	 * {@link AuthEntryPoint} on failure, and {@link AuthFilter} before
-	 * {@link UsernamePasswordAuthenticationFilter}.
+	 * Stateless Security 7 filter chain: optional CSRF, permit-all for no-auth
+	 * endpoints (Ant or PathPattern per matching-strategy), authenticated for
+	 * everything else, {@link AuthEntryPoint} on failure, and {@link AuthFilter}
+	 * before {@link UsernamePasswordAuthenticationFilter}.
 	 *
 	 * @param http the HTTP security builder
 	 * @return the built filter chain
@@ -198,26 +200,36 @@ public class SecurityConfig {
 	 */
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+		boolean ant = PathPatternSupport.isAntPathMatcher(environment);
 		if (!isCSRFEnable) {
 			http = http.csrf(httpEntry -> httpEntry.disable());
 		} else{
-			http.csrf(httpEntry -> httpEntry.ignoringRequestMatchers(csrfIgnoreUrls)
-					.csrfTokenRepository(this.getCsrfTokenRepository()));
+			RequestMatcher[] csrfIgnoreMatchers = Stream.of(csrfIgnoreUrls)
+					.map(url -> PathPatternSupport.requestMatcher(url, ant))
+					.toArray(RequestMatcher[]::new);
+			http.csrf(httpEntry -> {
+				if (csrfIgnoreMatchers.length > 0) {
+					httpEntry.ignoringRequestMatchers(csrfIgnoreMatchers);
+				}
+				httpEntry.csrfTokenRepository(this.getCsrfTokenRepository());
+			});
 		}
-		
-		String[] exclusionPatterns = Stream.concat(
+
+		RequestMatcher[] exclusionMatchers = Stream.concat(
 				Optional.ofNullable(noAuthenticationEndPoint.getGlobal()).map(GlobalEndPoint::getEndPoints)
 						.map(List::stream).orElseGet(Stream::empty),
 				Optional.ofNullable(noAuthenticationEndPoint.getService()).map(ServiceEndPoint::getEndPoints)
 						.map(List::stream).orElseGet(Stream::empty))
-				.map(PathPatternSupport::toPathPattern)
 				.distinct()
-				.toArray(String[]::new);
-		
-		http.authorizeHttpRequests(authorizeRequests -> authorizeRequests
-				.requestMatchers(exclusionPatterns).permitAll()
-				.anyRequest().authenticated()
-				);
+				.map(pattern -> PathPatternSupport.requestMatcher(pattern, ant))
+				.toArray(RequestMatcher[]::new);
+
+		http.authorizeHttpRequests(authorizeRequests -> {
+			if (exclusionMatchers.length > 0) {
+				authorizeRequests.requestMatchers(exclusionMatchers).permitAll();
+			}
+			authorizeRequests.anyRequest().authenticated();
+		});
 		http.exceptionHandling(exceptionConfigurer -> exceptionConfigurer.authenticationEntryPoint(new AuthEntryPoint()));
 		http.sessionManagement(sessionConfigurer -> sessionConfigurer.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 

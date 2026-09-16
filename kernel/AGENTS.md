@@ -11,7 +11,7 @@ Java parent. Infra → [root](../AGENTS.md).
 
 Pins on `kernel/pom.xml`. Children inherit plugins. `kernel-core` + siblings: **no** `<version>`. ZIP layout, not `<executable>true`. Logger/velocity in `kernel-core`. Compiler plugin: Maven **3.x** GA (not 4.x beta).
 
-**Keep:** `/v1/authmanager`, Keycloak IAM, `DateUtils2`, adapter filter chain. Spring 7: `fromUriString`; `getStatusCode().value()`; `APPLICATION_JSON`; Tomcat; `AnyRequestMatcher` + `PathPatternRequestMatcher` (`PathPatternSupport`; no `AntPathRequestMatcher`).
+**Keep:** `/v1/authmanager`, Keycloak IAM, `DateUtils2`, adapter filter chain. Spring 7: `fromUriString`; `getStatusCode().value()`; `APPLICATION_JSON`; Tomcat; `AnyRequestMatcher` + `PathPatternSupport` (`spring.mvc.pathmatch.matching-strategy`: `PATH_PATTERN_PARSER` default, `ANT_PATH_MATCHER` like 3.4).
 
 **Do not:** `kernel-bom`; merge adapter into service; restore `DateUtils`; Keycloak adapter BOM; Vert.x **4/5** (stay **3.9.16**).
 

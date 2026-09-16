@@ -8,7 +8,7 @@ It is a **Maven dependency**, not a Docker wget extra. `kernel-core` is `provide
 
 Parent: [`../README.md`](../README.md)
 
-Do not merge this module into `kernel-auth-service`. Spring Security 7 matchers: `AnyRequestMatcher` + `PathPatternRequestMatcher` (`PathPatternSupport`; no `AntPathRequestMatcher`).
+Do not merge this module into `kernel-auth-service`. Spring Security 7 matchers: `AnyRequestMatcher` + `PathPatternSupport`. Same Boot 3.4 switch as MVC: `spring.mvc.pathmatch.matching-strategy=PATH_PATTERN_PARSER` (default) or `ANT_PATH_MATCHER`.
 
 ---
 
@@ -48,6 +48,12 @@ Host services take IAM and validate-token URLs from [mosip-config](https://githu
 - [kernel-default.properties](https://github.com/mosip/mosip-config/blob/master/kernel-default.properties)
 
 Typical keys: `auth.server.admin.validate.url`, `auth.server.admin.issuer.uri`, `auth.allowed.urls`, `mosip.auth.adapter.impl.basepackage`.
+
+Path matching uses the same Boot 3.4 key as MVC, `spring.mvc.pathmatch.matching-strategy`:
+- `PATH_PATTERN_PARSER` (omit or set) — Boot 4 default
+- `ANT_PATH_MATCHER` — 3.4 Ant (including a double-star in the middle of a path)
+
+mosip-config `application-default.properties` can still set `ANT_PATH_MATCHER`; change it to `PATH_PATTERN_PARSER` (or remove it) to disable Ant.
 
 ---
 

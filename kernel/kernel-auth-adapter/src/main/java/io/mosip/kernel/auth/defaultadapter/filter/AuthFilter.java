@@ -61,12 +61,12 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Servlet authentication filter that extracts JWTs from cookies, skips
- * configured no-auth PathPatterns, and delegates to the authentication manager.
+ * configured no-auth paths, and delegates to the authentication manager.
  * <p>
- * No-auth matching uses {@link PathPatternSupport} (Spring Security 7
- * {@code PathPatternRequestMatcher}), not Ant. After success, the filter chain
- * continues. Compliance Toolkit data-share token handling is an optional
- * fail-safe behind {@code auth.handle.ctk.flow}.
+ * No-auth matching uses {@link PathPatternSupport} with the same Boot 3.4
+ * switch as MVC ({@code spring.mvc.pathmatch.matching-strategy}). After
+ * success, the filter chain continues. Compliance Toolkit data-share token
+ * handling is an optional fail-safe behind {@code auth.handle.ctk.flow}.
  * <p>
  * This adapter is a library other MOSIP services put on the classpath.
  *
@@ -156,6 +156,7 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 			NoAuthenticationEndPoint noAuthenticationEndPoint, Environment environment) {
 		super(requiresAuthenticationRequestMatcher);
 		this.noAuthenticationEndPoint = noAuthenticationEndPoint;
+		this.environment = environment;
 		String applName = getApplicationName(environment);
 		allowedHttpMethods = (List<String>) environment.getProperty(
 				"mosip.service.exclude.auth.allowed.method." + applName, List.class, environment.getProperty(
@@ -165,8 +166,8 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 	}
 
 	/**
-	 * Returns {@code false} (skip authentication) for global PathPatterns, or for
-	 * service PathPatterns when the servlet context matches and the HTTP method is
+	 * Returns {@code false} (skip authentication) for global no-auth paths, or for
+	 * service paths when the servlet context matches and the HTTP method is
 	 * allowed.
 	 *
 	 * @param request  the inbound request
@@ -193,8 +194,8 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 	}
 
 	/**
-	 * Returns whether any configured Ant-style pattern matches {@code request}
-	 * after {@link PathPatternSupport} conversion.
+	 * Returns whether any configured pattern matches {@code request} using
+	 * {@link PathPatternSupport} and {@code spring.mvc.pathmatch.matching-strategy}.
 	 *
 	 * @param request   the inbound request
 	 * @param endPoints configured patterns, possibly {@code null} or empty
@@ -204,7 +205,8 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		if (endPoints == null || endPoints.isEmpty()) {
 			return false;
 		}
-		return endPoints.stream().anyMatch(pattern -> PathPatternSupport.matches(request, pattern));
+		return endPoints.stream()
+				.anyMatch(pattern -> PathPatternSupport.matches(request, pattern, environment));
 	}
 
 	/**

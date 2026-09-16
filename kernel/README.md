@@ -11,7 +11,7 @@ The reactor publishes:
 
 Do not reintroduce `kernel-bom`. Pin versions on `kernel/pom.xml`. Boot 4 uses ZIP layout, not `<executable>true`. Logger and Velocity templates live in commons `kernel-core`.
 
-**Configuration** lives in [mosip-config](https://github.com/mosip/mosip-config).
+**Configuration** lives in [mosip-config](https://github.com/mosip/mosip-config). Path matching uses the Boot 3.4 key `spring.mvc.pathmatch.matching-strategy` (`PATH_PATTERN_PARSER` default, `ANT_PATH_MATCHER` for Ant).
 
 ### Build
 
