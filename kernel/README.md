@@ -27,15 +27,16 @@ PowerShell: quote `-D`. One module: `mvn -pl <mod> -am test`.
 
 HTTP service: [`deploy/`](../deploy/README.md). Chart: [`helm/authmanager`](../helm/authmanager/README.md).
 
-Local run (all OS / IDEs / Docker): [`kernel-auth-service/README.md`](kernel-auth-service/README.md) · [`run-local.sh`](kernel-auth-service/run-local.sh) · [`run-local.bat`](kernel-auth-service/run-local.bat). Scripts compile, test, then start. Do not copy cluster GC flags; use `JDK_JAVA_OPTIONS` only if you need heap.
+Local run (all OS / IDEs / Docker): [`kernel-auth-service/README.md`](kernel-auth-service/README.md) · [`run-local.sh`](kernel-auth-service/run-local.sh) · [`run-local.bat`](kernel-auth-service/run-local.bat). Commands: `init` `start` `smoke` `stop` `test` `all`. Do not copy cluster GC flags; use `JDK_JAVA_OPTIONS` only if you need heap.
 
 ```text
-cd kernel/kernel-auth-service && ./run-local.sh
+cd kernel/kernel-auth-service && ./run-local.sh init && ./run-local.sh start
 ```
 
 ```text
 cd kernel\kernel-auth-service
-run-local.bat
+run-local.bat init
+run-local.bat start
 ```
 
 See [`AGENTS.md`](AGENTS.md).

@@ -78,21 +78,54 @@ Uses files in [mosip-config](https://github.com/mosip/mosip-config/tree/master).
 mvn -pl kernel-auth-service -am clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 ```
 
-3. Start. The scripts compile, run all Maven tests for this module and its reactor deps, package the Boot ZIP, then start. **Do not** copy cluster GC flags (`UseZGC`, …) onto the command line. Cluster injects them as `JDK_JAVA_OPTIONS` (Helm `additionalResources.javaOpts`). Local JDK 21 defaults are enough.
+3. Start with `run-local.sh` / `run-local.bat`. **Do not** copy cluster GC flags (`UseZGC`, …) onto the command line. Cluster injects them as `JDK_JAVA_OPTIONS` (Helm `additionalResources.javaOpts`). Local JDK 21 defaults are enough.
 
-**Script (Linux, macOS, WSL, Git Bash):**
+### Helper scripts
 
-```text
-cd kernel/kernel-auth-service
-chmod +x run-local.sh
-./run-local.sh
+| Command | What it does |
+|---------|----------------|
+| `init` | Maven package this module (skip tests) |
+| `start` | Start on port **8091** and wait until Spring Boot is ready |
+| `smoke` | `GET /v1/authmanager/actuator/health` and Swagger UI |
+| `stop` | Stop the process (frees the Boot ZIP for `mvn clean`) |
+| `test` | Maven unit tests |
+| `all` | `init` + `test` + `start` + `smoke` |
+| `docker` | `init`, docker build, run |
+
+Logs / PID: `kernel-auth-service/.local/`
+
+#### Windows (cmd)
+
+```bat
+cd kernel\kernel-auth-service
+run-local.bat init
+run-local.bat start
+run-local.bat smoke
+run-local.bat stop
 ```
 
-**Script (Windows cmd.exe):**
+Override port:
 
-```text
-cd kernel\kernel-auth-service
-run-local.bat
+```bat
+set PORT=8091
+run-local.bat start
+```
+
+#### Linux / macOS / Git Bash
+
+```bash
+cd kernel/kernel-auth-service
+chmod +x run-local.sh
+./run-local.sh init
+./run-local.sh start
+./run-local.sh smoke
+./run-local.sh stop
+```
+
+Override port:
+
+```bash
+PORT=8091 ./run-local.sh start
 ```
 
 **Manual `java`:**
@@ -106,8 +139,8 @@ Config server (scripts also read these env vars):
 
 | OS | |
 |----|--|
-| bash | `export SPRING_CLOUD_CONFIG_URI=http://localhost:51000` then `./run-local.sh` |
-| cmd | `set SPRING_CLOUD_CONFIG_URI=http://localhost:51000` then `run-local.bat` |
+| bash | `export SPRING_CLOUD_CONFIG_URI=http://localhost:51000` then `./run-local.sh start` |
+| cmd | `set SPRING_CLOUD_CONFIG_URI=http://localhost:51000` then `run-local.bat start` |
 
 Optional heap only (not cluster ZGC):
 
