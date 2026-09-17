@@ -1,5 +1,5 @@
-# Global endpoints to access without authentication.
-# matching-strategy: PATH_PATTERN_PARSER (default) or ANT_PATH_MATCHER (Boot 3.4 Ant).
+# Defaults when mosip-config omits mosip.global.end-points (pause_play_config is empty).
+# Same list as kernel-auth-adapter. Cluster mosip-config overrides this.
 mosip:
   global:
     end-points:

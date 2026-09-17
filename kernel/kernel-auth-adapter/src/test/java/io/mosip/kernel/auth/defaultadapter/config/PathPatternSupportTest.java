@@ -39,6 +39,28 @@ public class PathPatternSupportTest {
 	}
 
 	@Test
+	public void matchesSwaggerUiWithEmptyServletPath() {
+		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v1/authmanager/swagger-ui/index.html");
+		request.setContextPath("/v1/authmanager");
+		request.setServletPath("");
+		request.setPathInfo("/swagger-ui/index.html");
+		assertTrue(PathPatternSupport.matches(request, "/swagger-ui/**"));
+		assertTrue(PathPatternSupport.matches(request, "/**/swagger-ui/**"));
+		assertTrue(PathPatternSupport.requestMatcher("/swagger-ui/**", false).matches(request));
+		assertTrue(PathPatternSupport.matches(request, "/swagger-ui/**", true));
+	}
+
+	@Test
+	public void matchesOpenApiDocsWithContextPath() {
+		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/v1/authmanager/v3/api-docs");
+		request.setContextPath("/v1/authmanager");
+		request.setServletPath("");
+		request.setPathInfo("/v3/api-docs");
+		assertTrue(PathPatternSupport.matches(request, "/v3/api-docs"));
+		assertTrue(PathPatternSupport.matches(request, "/v3/api-docs/**"));
+	}
+
+	@Test
 	public void matchesIllegalPatternIsFalse() {
 		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/a/details");
 		request.setServletPath("/api/a/details");

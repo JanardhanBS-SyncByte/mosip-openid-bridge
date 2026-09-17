@@ -64,6 +64,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
+		<!-- Boot 4: Tracer bean for kernel-core SleuthLoggingAutoConfiguration. Bridge already comes from kernel-core. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-micrometer-tracing-brave</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
@@ -177,7 +182,7 @@
 									<groupId>io.mosip.kernel</groupId>
 									<artifactId>kernel-auth-adapter</artifactId>
 									<version>${project.version}</version>
-									<includes>io/mosip/kernel/auth/**</includes>
+									<includes>io/mosip/kernel/auth/**,application.yml</includes>
 									<excludes>**/VertxAuthHandler*,**/VertxTokenValidationHelper*</excludes>
 									<outputDirectory>${project.build.outputDirectory}</outputDirectory>
 								</artifactItem>

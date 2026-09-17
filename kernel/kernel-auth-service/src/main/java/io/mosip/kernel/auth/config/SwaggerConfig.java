@@ -11,6 +11,8 @@ import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 
 
@@ -32,6 +34,11 @@ public class SwaggerConfig {
 	private static final Logger logger = LoggerFactory.getLogger(SwaggerConfig.class);
 
 	/**
+	 * Scheme name shown by Swagger UI as Authorize (IDA-style Authorization apiKey).
+	 */
+	public static final String AUTHORIZATION_SCHEME = "Authorization";
+
+	/**
 	 * OpenAPI title, description, version, license, and server list from properties.
 	 */
 	@Autowired
@@ -40,11 +47,13 @@ public class SwaggerConfig {
 	/**
 	 * OpenAPI document used by Springdoc for Swagger UI under authmanager.
 	 *
-	 * @return configured {@link OpenAPI} with info and servers
+	 * @return configured {@link OpenAPI} with info, servers, and Authorize apiKey
 	 */
 	@Bean
 	public OpenAPI openApi() {
-		OpenAPI api = new OpenAPI().components(new Components())
+		OpenAPI api = new OpenAPI()
+				.components(new Components().addSecuritySchemes(AUTHORIZATION_SCHEME, authorizationApiKey()))
+				.addSecurityItem(new SecurityRequirement().addList(AUTHORIZATION_SCHEME))
 				.info(new Info().title(openApiProperties.getInfo().getTitle())
 						.version(openApiProperties.getInfo().getVersion())
 						.description(openApiProperties.getInfo().getDescription())
@@ -55,5 +64,16 @@ public class SwaggerConfig {
 			api.addServersItem(new Server().description(server.getDescription()).url(server.getUrl()));
 		});
 		return api;
+	}
+
+	/**
+	 * Header apiKey named {@code Authorization}, the same scheme ID Authentication
+	 * uses so Swagger UI shows Authorize with Name/In/Value.
+	 *
+	 * @return the security scheme
+	 */
+	private static SecurityScheme authorizationApiKey() {
+		return new SecurityScheme().type(SecurityScheme.Type.APIKEY).in(SecurityScheme.In.HEADER)
+				.name(AUTHORIZATION_SCHEME);
 	}
 }

@@ -25,6 +25,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.core.env.Environment;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import com.auth0.jwt.JWT;
@@ -135,6 +136,8 @@ public class VertxTokenValidationHelperOfflineTest {
 	 */
 	@Test
 	public void getTokenValidatedVertxUserResponseTest() throws Exception {
+		// JWKS offline path (not deprecated local). Do not inherit SPRING_PROFILES_ACTIVE=local.
+		ReflectionTestUtils.setField(vertxTokenValidationHelper, "activeProfile", "test");
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
 		kpg.initialize(2048);
 		KeyPair kp = kpg.generateKeyPair();

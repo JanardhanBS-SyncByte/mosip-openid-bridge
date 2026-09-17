@@ -27,16 +27,15 @@ PowerShell: quote `-D`. One module: `mvn -pl <mod> -am test`.
 
 HTTP service: [`deploy/`](../deploy/README.md). Chart: [`helm/authmanager`](../helm/authmanager/README.md).
 
-Local run with a profile:
+Local run (all OS / IDEs / Docker): [`kernel-auth-service/README.md`](kernel-auth-service/README.md) · [`run-local.sh`](kernel-auth-service/run-local.sh) · [`run-local.bat`](kernel-auth-service/run-local.bat). Scripts compile, test, then start. Do not copy cluster GC flags; use `JDK_JAVA_OPTIONS` only if you need heap.
 
 ```text
-java -Dspring.profiles.active=<profile> -jar kernel-auth-service-<$version>.jar
+cd kernel/kernel-auth-service && ./run-local.sh
 ```
 
-Remote config:
-
 ```text
-java -Dspring.profiles.active=<profile> -Dspring.cloud.config.uri=<config-url> -Dspring.cloud.config.label=<config-label> -jar kernel-auth-service-<$version>.jar
+cd kernel\kernel-auth-service
+run-local.bat
 ```
 
 See [`AGENTS.md`](AGENTS.md).

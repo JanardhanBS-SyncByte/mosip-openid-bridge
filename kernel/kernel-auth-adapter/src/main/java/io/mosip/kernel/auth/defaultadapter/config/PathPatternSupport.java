@@ -1,9 +1,12 @@
 package io.mosip.kernel.auth.defaultadapter.config;
 
 import org.springframework.core.env.Environment;
-import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.http.server.PathContainer;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.AntPathMatcher;
+import org.springframework.web.util.UrlPathHelper;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -13,8 +16,9 @@ import jakarta.servlet.http.HttpServletRequest;
  * Uses the same Boot 3.4 switch as MVC:
  * {@code spring.mvc.pathmatch.matching-strategy}.
  * {@code ANT_PATH_MATCHER} keeps Ant ({@code **} in the middle of a path).
- * {@code PATH_PATTERN_PARSER} (Boot 4 default) uses
- * {@link PathPatternRequestMatcher}.
+ * {@code PATH_PATTERN_PARSER} (Boot 4 default) uses {@link PathPatternParser}
+ * against the servlet path (context path is ignored, so
+ * {@code /v1/authmanager/actuator/health} matches {@code /actuator/**}).
  * <p>
  * PathPattern is relative to the servlet context path, so a leading Ant
  * any-depth prefix ({@code /}**{@code /}) is stripped. Double-star is only
@@ -28,16 +32,22 @@ public final class PathPatternSupport {
 	public static final String MATCHING_STRATEGY_PROPERTY = "spring.mvc.pathmatch.matching-strategy";
 
 	/**
-	 * Shared PathPattern matcher builder using Spring Security defaults (servlet
-	 * path relative to the context path).
+	 * PathPattern parser for Boot 4 default matching on {@link #servletPath}.
 	 */
-	private static final PathPatternRequestMatcher.Builder PATHS = PathPatternRequestMatcher.withDefaults();
+	private static final PathPatternParser PATH_PATTERNS = PathPatternParser.defaultInstance;
 
 	/**
 	 * Ant matcher used when {@link #MATCHING_STRATEGY_PROPERTY} is
 	 * {@code ANT_PATH_MATCHER}.
 	 */
 	private static final AntPathMatcher ANT = new AntPathMatcher();
+
+	/**
+	 * Resolves the path within the servlet context (URI minus context path). Needed
+	 * because DispatcherServlet mapped to {@code /} often leaves
+	 * {@code getServletPath()} empty and puts the path in {@code getPathInfo()}.
+	 */
+	private static final UrlPathHelper URL_PATH = new UrlPathHelper();
 
 	/**
 	 * Prevents instantiation; all members are static.
@@ -75,7 +85,7 @@ public final class PathPatternSupport {
 	 * is reduced to a single {@code *}.
 	 *
 	 * @param pattern the configured Ant-style path, possibly {@code null}
-	 * @return a PathPattern string suitable for {@link PathPatternRequestMatcher}
+	 * @return a PathPattern string suitable for {@link PathPatternParser}
 	 */
 	public static String toPathPattern(String pattern) {
 		if (pattern == null || pattern.isBlank() || "*".equals(pattern.trim())) {
@@ -123,8 +133,9 @@ public final class PathPatternSupport {
 			return request -> ANT.match(antPattern, servletPath(request));
 		}
 		try {
-			return PATHS.matcher(toPathPattern(pattern));
-		} catch (IllegalArgumentException ex) {
+			PathPattern parsed = PATH_PATTERNS.parse(toPathPattern(pattern));
+			return request -> parsed.matches(PathContainer.parsePath(servletPath(request)));
+		} catch (IllegalArgumentException | IllegalStateException ex) {
 			return request -> false;
 		}
 	}
@@ -134,7 +145,7 @@ public final class PathPatternSupport {
 	 *
 	 * @param request the inbound servlet request
 	 * @param pattern the configured Ant-style path
-	 * @return {@code true} if {@link PathPatternRequestMatcher} matches
+	 * @return {@code true} if the PathPattern matches the servlet path
 	 */
 	public static boolean matches(HttpServletRequest request, String pattern) {
 		return matches(request, pattern, false);
@@ -167,20 +178,36 @@ public final class PathPatternSupport {
 			if (ant) {
 				return ANT.match(toAntPattern(pattern), servletPath(request));
 			}
-			return PATHS.matcher(toPathPattern(pattern)).matches(request);
-		} catch (IllegalArgumentException ex) {
+			PathPattern parsed = PATH_PATTERNS.parse(toPathPattern(pattern));
+			return parsed.matches(PathContainer.parsePath(servletPath(request)));
+		} catch (IllegalArgumentException | IllegalStateException ex) {
 			return false;
 		}
 	}
 
 	/**
-	 * Servlet path used for Ant matching; {@code /} when empty.
+	 * Path within the application (context path stripped). Falls back to
+	 * {@code /} when empty so Tomcat {@code /*} mappings still match.
 	 *
 	 * @param request the inbound request
-	 * @return a non-empty path
+	 * @return a non-empty path starting with {@code /}
 	 */
 	private static String servletPath(HttpServletRequest request) {
-		String path = request.getServletPath();
+		String path = URL_PATH.getPathWithinApplication(request);
+		if (path == null || path.isEmpty()) {
+			String uri = request.getRequestURI();
+			String contextPath = request.getContextPath();
+			if (uri != null) {
+				path = uri;
+				if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
+					path = path.substring(contextPath.length());
+				}
+				int semi = path.indexOf(';');
+				if (semi >= 0) {
+					path = path.substring(0, semi);
+				}
+			}
+		}
 		if (path == null || path.isEmpty()) {
 			return "/";
 		}

@@ -72,48 +72,96 @@ Uses files in [mosip-config](https://github.com/mosip/mosip-config/tree/master).
 
 1. Config server must be running. See the [MOSIP Config Server Setup Guide](https://docs.mosip.io/1.2.0/modules/registration-processor/registration-processor-developers-guide#environment-setup).
 
-2. From `kernel/`:
+2. From `kernel/` (PowerShell: quote `-D`):
 
 ```text
 mvn -pl kernel-auth-service -am clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 ```
 
-3. Start:
+3. Start. The scripts compile, run all Maven tests for this module and its reactor deps, package the Boot ZIP, then start. **Do not** copy cluster GC flags (`UseZGC`, …) onto the command line. Cluster injects them as `JDK_JAVA_OPTIONS` (Helm `additionalResources.javaOpts`). Local JDK 21 defaults are enough.
+
+**Script (Linux, macOS, WSL, Git Bash):**
 
 ```text
-java -jar kernel-auth-service/target/kernel-auth-service-<$version>.jar
+cd kernel/kernel-auth-service
+chmod +x run-local.sh
+./run-local.sh
 ```
 
-Or run `io.mosip.kernel.auth.AuthBootApplication` from the IDE.
+**Script (Windows cmd.exe):**
+
+```text
+cd kernel\kernel-auth-service
+run-local.bat
+```
+
+**Manual `java`:**
+
+| OS | Command |
+|----|---------|
+| Linux / macOS / WSL / Git Bash | `java -Dspring.profiles.active=local -jar target/kernel-auth-service-<$version>.jar` |
+| Windows cmd | `java -Dspring.profiles.active=local -jar target\kernel-auth-service-<$version>.jar` |
+
+Config server (scripts also read these env vars):
+
+| OS | |
+|----|--|
+| bash | `export SPRING_CLOUD_CONFIG_URI=http://localhost:51000` then `./run-local.sh` |
+| cmd | `set SPRING_CLOUD_CONFIG_URI=http://localhost:51000` then `run-local.bat` |
+
+Optional heap only (not cluster ZGC):
+
+| OS | |
+|----|--|
+| bash | `export JDK_JAVA_OPTIONS="-Xms512M -Xmx512M"` |
+| cmd | `set JDK_JAVA_OPTIONS=-Xms512M -Xmx512M` |
+
+**IDE** — main class `io.mosip.kernel.auth.AuthBootApplication`. Leave VM/GC flags empty.
+
+| IDE | Run |
+|-----|-----|
+| IntelliJ IDEA | Open `kernel/`, Run the main class. Active profiles: `local`. Env `JDK_JAVA_OPTIONS` only for heap. |
+| Eclipse | Run As → Java Application. VM arguments empty, or `-Dspring.profiles.active=local`. |
+| VS Code / Cursor | Run/Debug the main class. `launch.json`: `"mainClass": "io.mosip.kernel.auth.AuthBootApplication"`, `"env": { "SPRING_PROFILES_ACTIVE": "local" }`. |
+| NetBeans | Run File on `AuthBootApplication`. VM Options empty. |
 
 4. Verify `http://localhost:8091/v1/authmanager/actuator/health`.
 
-Remote config:
-
-```text
-java -Dspring.profiles.active=<profile> -Dspring.cloud.config.uri=<config-url> -Dspring.cloud.config.label=<config-label> -jar kernel-auth-service-<$version>.jar
-```
-
 ### Local Setup with Docker
 
-#### Option 1: Pull from Docker Hub
+GC/heap still come from `JDK_JAVA_OPTIONS` (optional). Pass config as `active_profile_env`, `spring_config_url_env`, `spring_config_label_env`. Adapter is in the image; do not wget `kernel-auth-adapter.jar`. Use `host.docker.internal` for a config server on the host (Linux: `--add-host=host.docker.internal:host-gateway`).
+
+**Script:**
 
 ```text
-docker pull mosipid/kernel-auth-service:<$version>
+SPRING_CLOUD_CONFIG_URI=http://host.docker.internal:51000 ./run-local.sh docker
 ```
 
-#### Option 2: Build locally
+```text
+set SPRING_CLOUD_CONFIG_URI=http://host.docker.internal:51000
+run-local.bat docker
+```
+
+**Manual build:**
 
 ```text
 cd kernel/kernel-auth-service
 docker build -t kernel-auth-service .
 ```
 
+Linux:
+
 ```text
-docker run -d -p 8091:8091 --name kernel-auth-service kernel-auth-service
+docker run --rm -p 8091:8091 --name kernel-auth-service --add-host=host.docker.internal:host-gateway -e active_profile_env=local -e spring_config_url_env=http://host.docker.internal:51000 -e spring_config_label_env=master kernel-auth-service
 ```
 
-Pass `active_profile_env`, `spring_config_url_env`, and `spring_config_label_env` as in the Dockerfile. The adapter is already in the image; do not wget `kernel-auth-adapter.jar`.
+macOS / Windows Docker Desktop:
+
+```text
+docker run --rm -p 8091:8091 --name kernel-auth-service -e active_profile_env=local -e spring_config_url_env=http://host.docker.internal:51000 -e spring_config_label_env=master kernel-auth-service
+```
+
+Hub: `docker pull mosipid/kernel-auth-service:<$version>` then the same `docker run` with that image. Optional: `-e JDK_JAVA_OPTIONS="-Xms512M -Xmx512M"`.
 
 ---
 

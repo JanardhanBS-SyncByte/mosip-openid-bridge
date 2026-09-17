@@ -177,7 +177,8 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 	@Override
 	protected boolean requiresAuthentication(HttpServletRequest request, HttpServletResponse response) {
 		// To check the global end-points
-		if (isPresent(request, noAuthenticationEndPoint.getGlobal().getEndPoints())) {
+		if (isPresent(request, noAuthenticationEndPoint.getGlobal() == null ? null
+				: noAuthenticationEndPoint.getGlobal().getEndPoints())) {
 			return false;
 		}
 		// As the request not a part of the global end-points, check in master data
@@ -221,8 +222,8 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 				|| noAuthenticationEndPoint.getServiceContext().isEmpty())
 			return false;
 		if (noAuthenticationEndPoint.getService() == null
-				&& noAuthenticationEndPoint.getService().getEndPoints() == null
-				&& noAuthenticationEndPoint.getService().getEndPoints().isEmpty())
+				|| noAuthenticationEndPoint.getService().getEndPoints() == null
+				|| noAuthenticationEndPoint.getService().getEndPoints().isEmpty())
 			return false;
 		return true;
 	}
@@ -296,14 +297,6 @@ public class AuthFilter extends AbstractAuthenticationProcessingFilter {
 		}
 
 		if (token == null) {
-			ResponseWrapper<ServiceError> errorResponse = setErrors(httpServletRequest);
-			ServiceError error = new ServiceError(AuthAdapterErrorCode.UNAUTHORIZED.getErrorCode(),
-					"Authentication Failed");
-			errorResponse.getErrors().add(error);
-			httpServletResponse.setStatus(HttpStatus.UNAUTHORIZED.value());
-			httpServletResponse.setContentType("application/json");
-			httpServletResponse.setCharacterEncoding("UTF-8");
-			httpServletResponse.getWriter().write(convertObjectToJson(errorResponse));
 			LOGGER.error("\n\n Exception : Authorization token not present > " + httpServletRequest.getRequestURL()
 					+ "\n\n");
 			return sendAuthenticationFailure(httpServletRequest, httpServletResponse);
