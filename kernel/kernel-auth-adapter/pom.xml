@@ -11,6 +11,7 @@
 	</parent>
 
 	<artifactId>kernel-auth-adapter</artifactId>
+	<version>1.4.1-SNAPSHOT</version>
 	<packaging>jar</packaging>
 	<name>common auth adapter</name>
 	<description>Spring Security adapter injected into MOSIP services</description>

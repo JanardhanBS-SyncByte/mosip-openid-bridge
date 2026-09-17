@@ -11,6 +11,7 @@
 	</parent>
 
 	<artifactId>kernel-auth-service</artifactId>
+	<version>1.4.1-SNAPSHOT</version>
 	<packaging>jar</packaging>
 	<name>Auth service</name>
 	<description>Auth manager HTTP service at /v1/authmanager. Bridges OpenID and MOSIP services.</description>
