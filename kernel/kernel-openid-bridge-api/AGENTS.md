@@ -1,3 +1,3 @@
-# kernel-openid-bridge-api
+# openid-bridge-api
 
-DTOs/SPIs. No controllers. No sibling `<version>`.
+DTOs/SPIs. No controllers. Sibling deps: no `<version>`.

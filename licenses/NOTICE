@@ -13,7 +13,7 @@ APACHE LICENSE 2.0 COMPONENTS
 
 Spring Framework 7.0.9 & Spring Boot 4.1.1
   (spring-boot-starter-web, webflux, security, actuator, data-jpa,
-  jackson2, configuration-processor, tomcat 11.0.24)
+  jackson2, configuration-processor, micrometer-tracing-brave, tomcat 11.0.24)
   Copyright © 2002-2026 Broadcom. All Rights Reserved.
   Copyright © 2002-2024 VMware, Inc. or its affiliates.
   Licensed under the Apache License, Version 2.0

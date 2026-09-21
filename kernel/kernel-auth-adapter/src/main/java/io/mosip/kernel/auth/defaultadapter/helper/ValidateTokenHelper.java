@@ -33,10 +33,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
-
-import reactor.core.publisher.Mono;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import com.auth0.jwk.Jwk;
 import com.auth0.jwk.JwkException;
@@ -50,7 +48,6 @@ import com.auth0.jwt.interfaces.Claim;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterConstant;
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterErrorCode;
@@ -67,8 +64,9 @@ import jakarta.annotation.PostConstruct;
  * facades.
  * <p>
  * Online validation calls the user-info endpoint (RestTemplate or WebClient
- * {@code exchangeToMono}). Offline validation uses JWKS, expiry, issuer host,
- * RSA signature, and audience/{@code azp} checks. Dates use {@code DateUtils2}.
+ * {@code retrieve()} with Jackson 2 on a String body). Offline validation uses
+ * JWKS, expiry, issuer host, RSA signature, and audience/{@code azp} checks.
+ * Dates use {@code DateUtils2}.
  * <p>
  * This adapter is a library other MOSIP services put on the classpath.
  */
@@ -493,7 +491,7 @@ public class ValidateTokenHelper {
 
 	/**
 	 * Calls the OIDC user-info endpoint with a Bearer token via WebClient
-	 * {@code exchangeToMono}, then checks audience and maps the JWT.
+	 * {@code retrieve()} and Jackson 2, then checks audience and maps the JWT.
 	 *
 	 * @param jwtToken  access-token JWT
 	 * @param webClient reactive HTTP client
@@ -515,13 +513,12 @@ public class ValidateTokenHelper {
 		HttpHeaders headers = new HttpHeaders();
 		headers.add(AuthAdapterConstant.AUTH_REQUEST_COOOKIE_HEADER, AuthAdapterConstant.BEARER_STR + jwtToken);
 		String userInfoPath = getUserInfoPath(decodedJWT);
-		ClientResponse response = webClient.method(HttpMethod.GET).uri(userInfoPath).headers(httpHeaders -> {
-			httpHeaders.addAll(headers);
-		}).exchangeToMono(Mono::just).block();
-		if (response != null && response.statusCode() == HttpStatus.OK) {
-			ObjectNode responseBody = response.bodyToMono(ObjectNode.class).block();
-			if (responseBody != null) {
-				List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(responseBody.asText());
+		try {
+			String rawBody = webClient.method(HttpMethod.GET).uri(userInfoPath).headers(httpHeaders -> {
+				httpHeaders.addAll(headers);
+			}).retrieve().bodyToMono(String.class).block();
+			if (rawBody != null && !rawBody.isBlank()) {
+				List<ServiceError> validationErrorsList = ExceptionUtils.getServiceErrorList(rawBody);
 				if (!validationErrorsList.isEmpty()) {
 					LOGGER.error("Error in validate token. Code {}, message {}",
 							validationErrorsList.get(0).getErrorCode(), validationErrorsList.get(0).getMessage());
@@ -537,6 +534,8 @@ public class ValidateTokenHelper {
 			}
 			MosipUserDto mosipUserDto = buildMosipUser(decodedJWT, jwtToken);
 			return ImmutablePair.of(HttpStatus.OK, mosipUserDto);
+		} catch (WebClientResponseException e) {
+			LOGGER.error("Token validation failed for accessToken {} status {}", jwtToken, e.getStatusCode());
 		}
 		LOGGER.error("user authentication failed for the provided token (WebClient).");
 		return ImmutablePair.of(HttpStatus.UNAUTHORIZED, null);

@@ -1,3 +1,3 @@
 # deploy/
 
-NS `kernel`. `install.sh [kubeconfig]` · `restart.sh` · `delete.sh`. Pin `CHART_VERSION`. Restart: keep `conf-secrets`.
+NS `kernel`. `install.sh [kubeconfig]` · `restart.sh` · `delete.sh`. Pin `CHART_VERSION`. Restart keeps `conf-secrets`.

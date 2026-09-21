@@ -1,3 +1,3 @@
-# helm/authmanager
+# authmanager
 
-Don't split. See [`../AGENTS.md`](../AGENTS.md).
+One chart. [`../AGENTS.md`](../AGENTS.md)

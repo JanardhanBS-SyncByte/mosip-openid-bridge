@@ -1,3 +1,3 @@
-# kernel-auth-adapter
+# adapter
 
-Fat-jar (`appendAssemblyId=false`). `kernel-core` + Vert.x **provided**. Don't merge into service.
+Fat-jar (`appendAssemblyId=false`). Vert.x **provided**. Don't merge into service.

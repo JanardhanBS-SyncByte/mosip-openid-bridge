@@ -28,9 +28,9 @@ import reactor.core.publisher.Mono;
  * own client-credentials token and renews it after HTTP 401.
  * <p>
  * Downstream calls use {@code ExchangeFunction#exchange}. TokenHelper and
- * ValidateTokenHelper use {@code exchangeToMono} for OIDC token and user-info
- * calls. Cookie replacement uses remove-then-add because {@code HttpHeaders}
- * no longer has a replace helper.
+ * ValidateTokenHelper use {@code retrieve()} plus Jackson 2 on a String body
+ * (Boot 4 default codecs are Jackson 3). On HTTP 401 the cookie is replaced by
+ * rebuilding {@link ClientRequest} because its headers are read-only.
  * <p>
  * This adapter is a library other MOSIP services put on the classpath.
  *
@@ -140,17 +140,16 @@ public class SelfTokenExchangeFilterFunction implements ExchangeFilterFunction {
 			}
 		}
 
-        List<String> cookies = request.headers().get(AuthAdapterConstant.AUTH_HEADER_COOKIE);
-		if (cookies != null && !cookies.isEmpty()) {
-			cookies = cookies.stream().filter(str -> !str.contains(AuthAdapterConstant.AUTH_HEADER)).collect(Collectors.toList());
-		}
-        request.headers().remove(AuthAdapterConstant.AUTH_HEADER_COOKIE);
-        if (cookies != null && !cookies.isEmpty()) {
-            cookies.forEach(cookie -> request.headers().add(AuthAdapterConstant.AUTH_HEADER_COOKIE, cookie));
-        }
-        request.headers().add(AuthAdapterConstant.AUTH_HEADER_COOKIE,
-                        AuthAdapterConstant.AUTH_HEADER + cachedToken.getToken());
-        return next.exchange(request);
+        List<String> cookies = request.headers().getOrEmpty(AuthAdapterConstant.AUTH_HEADER_COOKIE).stream()
+			.filter(str -> !str.contains(AuthAdapterConstant.AUTH_HEADER)).collect(Collectors.toList());
+		ClientRequest.Builder retryBuilder = ClientRequest.from(request);
+		retryBuilder.headers(headers -> {
+			headers.remove(AuthAdapterConstant.AUTH_HEADER_COOKIE);
+			cookies.forEach(cookie -> headers.add(AuthAdapterConstant.AUTH_HEADER_COOKIE, cookie));
+			headers.add(AuthAdapterConstant.AUTH_HEADER_COOKIE,
+					AuthAdapterConstant.AUTH_HEADER + cachedToken.getToken());
+		});
+		return next.exchange(retryBuilder.build());
     }
 
     /**

@@ -175,7 +175,7 @@ public class TokenValidationHelper {
     }
 
     /**
-     * Validates {@code token} via WebClient user-info ({@code exchangeToMono} in
+     * Validates {@code token} via WebClient user-info ({@code retrieve()} in
      * {@link ValidateTokenHelper}) and maps HTTP statuses to
      * {@link AuthManagerException}.
      *

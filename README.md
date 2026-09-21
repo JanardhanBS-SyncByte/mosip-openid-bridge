@@ -79,9 +79,26 @@ cd kernel
 mvn clean install -Dmaven.javadoc.skip=true "-Dgpg.skip=true"
 ```
 
-4. Start auth manager:
-    - Click the Run button in your IDE on `io.mosip.kernel.auth.AuthBootApplication`, or
-    - Run via command: `java -jar kernel-auth-service/target/kernel-auth-service-<$version>.jar`
+4. Start auth manager (JDK 21 defaults; cluster GC is `JDK_JAVA_OPTIONS`, not the command line). Full OS / IDE / Docker notes: [`kernel/kernel-auth-service/README.md`](kernel/kernel-auth-service/README.md).
+
+Linux / macOS / WSL / Git Bash:
+
+```text
+cd kernel/kernel-auth-service
+chmod +x run-local.sh
+./run-local.sh init
+./run-local.sh start
+```
+
+Windows cmd:
+
+```text
+cd kernel\kernel-auth-service
+run-local.bat init
+run-local.bat start
+```
+
+Or run `io.mosip.kernel.auth.AuthBootApplication` (IntelliJ, Eclipse, VS Code/Cursor, NetBeans).
 
 5. Verify Swagger / health at `http://localhost:8091/v1/authmanager`.
 
@@ -117,11 +134,13 @@ docker build -t kernel-auth-service .
 
 #### Running the Service
 
+Scripts: `./run-local.sh docker` or `run-local.bat docker` (`init` + image build + run).
+
 ```text
-docker run -d -p 8091:8091 --name kernel-auth-service kernel-auth-service
+docker run --rm -p 8091:8091 --name kernel-auth-service -e active_profile_env=local -e spring_config_url_env=http://host.docker.internal:51000 kernel-auth-service
 ```
 
-Provide Spring Cloud Config URL, profile, and label as documented in [`kernel/kernel-auth-service/README.md`](kernel/kernel-auth-service/README.md).
+Linux add `--add-host=host.docker.internal:host-gateway`. Optional `-e JDK_JAVA_OPTIONS="-Xms512M -Xmx512M"`. Details: [`kernel/kernel-auth-service/README.md`](kernel/kernel-auth-service/README.md).
 
 #### Verify Installation
 

@@ -7,7 +7,6 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
@@ -25,11 +23,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.BodyInserters;
-import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
-
-import reactor.core.publisher.Mono;
 
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterConstant;
 import io.mosip.kernel.auth.defaultadapter.constant.AuthAdapterErrorCode;
@@ -42,7 +38,8 @@ import io.mosip.kernel.core.exception.ServiceError;
  * issuer) for the service self-token.
  * <p>
  * The RestTemplate overload posts form data; the WebClient overload uses
- * {@code exchangeToMono}. Realm is resolved from
+ * {@code retrieve()} and Jackson 2 on a String body (Boot 4 default codecs are
+ * Jackson 3). Realm is resolved from
  * {@code mosip.kernel.auth.appids.realm.map}.
  * <p>
  * This adapter is a library other MOSIP services put on the classpath.
@@ -150,7 +147,7 @@ public class TokenHelper {
 
 	/**
 	 * Requests a client-credentials token using {@link WebClient}
-	 * {@code exchangeToMono}.
+	 * {@code retrieve()} and Jackson 2.
 	 *
 	 * @param clientId     OIDC client id
 	 * @param clientSecret OIDC client secret
@@ -175,23 +172,35 @@ public class TokenHelper {
 		if (Objects.isNull(realm))
 			return null;
 		String tokenUrl = new StringBuilder(issuerInternalURI).append(realm).append(tokenPath).toString();
-		ClientResponse response = webClient.method(HttpMethod.POST)
-				.uri(UriComponentsBuilder.fromUriString(tokenUrl).toUriString())
-				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
-				.body(BodyInserters.fromFormData(valueMap))
-				.exchangeToMono(Mono::just).block();
-		if (response != null && response.statusCode() == HttpStatus.OK) {
-			ObjectNode responseBody = response.bodyToMono(ObjectNode.class).block();
+		try {
+			String responseBody = webClient.method(HttpMethod.POST)
+					.uri(UriComponentsBuilder.fromUriString(tokenUrl).toUriString())
+					.contentType(MediaType.APPLICATION_FORM_URLENCODED)
+					.body(BodyInserters.fromFormData(valueMap))
+					.retrieve()
+					.bodyToMono(String.class)
+					.block();
 			String accessToken = null;
-			if (responseBody != null)
-				accessToken = responseBody.get(AuthAdapterConstant.ACCESS_TOKEN).asText();
+			if (responseBody != null) {
+				JsonNode jsonNode = mapper.readTree(responseBody);
+				JsonNode tokenNode = jsonNode.get(AuthAdapterConstant.ACCESS_TOKEN);
+				if (tokenNode != null && !tokenNode.isNull()) {
+					accessToken = tokenNode.asText();
+				}
+			}
 			if (Objects.nonNull(accessToken)) {
 				LOGGER.info("Found Token in response body and returning the Token(WebClient)");
 				return accessToken;
 			}
-		} 
-		
-		LOGGER.error("Error connecting to OIDC service (WebClient) {} or UNKNOWN Error.", AuthAdapterErrorCode.CANNOT_CONNECT_TO_AUTH_SERVICE.getErrorMessage());
+		} catch (WebClientResponseException e) {
+			LOGGER.error("Error connecting to OIDC service (WebClient) {} or UNKNOWN Error.",
+					e.getStatusCode());
+		} catch (IOException e) {
+			LOGGER.error("Error Parsing Response data {}", e.getMessage(), e);
+		}
+
+		LOGGER.error("Error connecting to OIDC service (WebClient) {} or UNKNOWN Error.",
+				AuthAdapterErrorCode.CANNOT_CONNECT_TO_AUTH_SERVICE.getErrorMessage());
 		return null;
 	}
 

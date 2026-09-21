@@ -55,7 +55,7 @@ import io.mosip.kernel.openid.bridge.model.AuthUserDetails;
  * skip hostname verification via anonymous {@link HostnameVerifier}
  * implementations. Self-token WebClient uses
  * {@link SelfTokenExchangeFilterFunction}; TokenHelper uses
- * {@code exchangeToMono} for OIDC calls.
+ * {@code retrieve()} for OIDC calls.
  * <p>
  * This adapter is a library other MOSIP services put on the classpath.
  */

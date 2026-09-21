@@ -29,7 +29,7 @@ import jakarta.annotation.PostConstruct;
  * When {@code mosip.iam.adapter.self-token-renewal-enable} is true, a single
  * thread runs {@link SelfTokenHandlerTask} every
  * {@code mosip.iam.adapter.token-expiry-check-frequency} minutes. TokenHelper
- * obtains tokens with WebClient {@code exchangeToMono}.
+ * obtains tokens with WebClient {@code retrieve()}.
  * <p>
  * This adapter is a library other MOSIP services put on the classpath.
  */

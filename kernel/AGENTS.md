@@ -1,11 +1,11 @@
 # kernel/
 
-Java. Infra → [root](../AGENTS.md). Pins: `pom.xml`. Compiler 3.x GA (not 4.x). Vert.x **3.9.16**. `DateUtils2`. ZIP not `<executable>true`.
+Pins on `pom.xml`. Compiler 3.x (not 4). Vert.x **3.9.16**. `DateUtils2`. ZIP not `<executable>true`. Each module POM has project `<version>` (kattu xmllint); sibling **deps** omit `<version>`. Parent keeps `git-commit-id-plugin`.
 
 `openid-bridge-api` · `authcodeflowproxy-api` · `auth-adapter` · `auth-service` (`:8091` `/v1/authmanager`)
 
-Spring 7: `fromUriString` · `getStatusCode().value()` · `APPLICATION_JSON` · Tomcat · `PathPatternSupport` (`matching-strategy`: `PATH_PATTERN_PARSER` | `ANT_PATH_MATCHER`)
+`PathPatternSupport` + `matching-strategy` (`PATH_PATTERN_PARSER` | `ANT_PATH_MATCHER`). Spring 7: `fromUriString` · `getStatusCode().value()` · `APPLICATION_JSON` · Tomcat.
 
-**Don't:** merge adapter into service · Keycloak adapter BOM · Vert.x 4/5 · invent `@author`
+Ban: merge adapter→service · Keycloak adapter BOM · Vert.x 4/5 · invent `@author`
 
-**Build:** `mvn -pl <mod> -am test`. PS: quote `-D`. Surefire `@{argLine}`. XML: no `--`.
+`mvn -pl <mod> -am test`. PS: quote `-D`. JaCoCo `@{argLine}`. XML: no `--`. Local: `kernel-auth-service/run-local.sh|.bat` (`init` `start` `smoke` `stop`).
