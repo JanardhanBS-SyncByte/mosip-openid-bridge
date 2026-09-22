@@ -1,6 +1,0 @@
-# Local run artifacts (run-local.bat / run-local.sh) — never commit
-.local/
-.mvn/
-logs/
-pids/
-*.log
